@@ -1,0 +1,15 @@
+[project]
+name = "johnny-dsl"
+version = "0.1.0"
+description = "A strategy DSL with a whole language behind it: mruby in Rust, JSON IR out."
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+include = ["python/johnny_dsl/py.typed", "python/johnny_dsl/_lib.pyi"]
+python-source = "python"
+module-name = "johnny_dsl._lib"
+features = ["pyo3/extension-module"]
