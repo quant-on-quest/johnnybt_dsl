@@ -2,8 +2,9 @@
 //!
 //! The whole contract is one function: source in, JSON out. Everything that
 //! makes the DSL a DSL — the vocabulary, the error messages, the shape of
-//! the IR — is written in Ruby (`ruby/prelude.rb`), because that is the
-//! language that reads well for it. This file only holds the interpreter's
+//! the IR — lives in our own mrbgems (`mrbgems/mruby-johnnybt` for the
+//! words, `mrbgems/mruby-json` for the bytes), compiled into the
+//! interpreter when mruby is built. This file only holds the interpreter's
 //! lifetime and moves two strings across the boundary.
 //!
 //! One interpreter per evaluation, opened and closed. A strategy file is
@@ -14,9 +15,6 @@
 use std::ffi::{CStr, CString};
 
 use crate::sys;
-
-/// The DSL's vocabulary, evaluated before the strategy file itself.
-const PRELUDE: &str = include_str!("../ruby/prelude.rb");
 
 /// What went wrong, in words the author of the strategy can act on.
 #[derive(Debug)]
@@ -124,10 +122,13 @@ impl Drop for Interpreter {
 ///   own complaint when the file declared nothing.
 pub fn evaluate(source: &str, name: &str) -> Result<String, Failure> {
     let interpreter = Interpreter::open()?;
-    interpreter.eval(PRELUDE, "<johnny_dsl prelude>")?;
-    // The prelude wraps the file: Ruby-side rescue turns a strategy author's
-    // mistake into an IR carrying the message, so the common error path
-    // needs no C-level exception handling at all.
+    // The vocabulary is already in the interpreter: `mruby-johnnybt` is a
+    // gem, so its Ruby half was compiled to bytecode when mruby was built.
+    // Nothing is parsed here but the strategy itself, and a vocabulary that
+    // does not compile is a build failure rather than a runtime one.
+    //
+    // A strategy author's mistake is rescued on the Ruby side into an IR
+    // failure, so the common error path needs no C-level handling at all.
     // Ruby's parse errors name no file, so the file is put in front: an
     // engine that cannot say *which* strategy failed is no better than YAML.
     interpreter

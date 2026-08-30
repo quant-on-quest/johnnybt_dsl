@@ -1,4 +1,7 @@
-# 策略 DSL 的词汇表。
+# 策略 DSL 的词汇表 —— mruby-johnnybt 这个 mrbgem 的 Ruby 半边。
+#
+# 构建时就编成字节码进 libmruby.a：每次求值不用再解析一遍，也就不存在
+# 「词汇表在运行时语法错」这种事。序列化那半边在 src/json.c。
 #
 # 这是**真的 Ruby**：循环、常量、方法、模块、Struct、异常，全都在。一份策略
 # 不再是「一张被 YAML 语法勉强撑住的表」，而是一段能表达自己的程序 ——
@@ -9,45 +12,6 @@
 # IR 怎么解释是 Python 的事，两边谁都不必迁就谁的语法。
 
 module JohnnyDSL
-  # 过界的那段 JSON 自己写 —— mruby 不带 JSON，而我们要序列化的东西只有
-  # 五种：映射、数组、字符串、数、真假空。为这点事引一个 gem 不值。
-  module JSON
-    def self.dump(value)
-      case value
-      when nil then "null"
-      when true then "true"
-      when false then "false"
-      when Integer then value.to_s
-      when Float then value.to_s
-      when Symbol then quote(value.to_s)
-      when String then quote(value)
-      when Array then "[" + value.map { |item| dump(item) }.join(",") + "]"
-      when Hash then "{" + value.map { |key, item| "#{quote(key.to_s)}:#{dump(item)}" }.join(",") + "}"
-      else quote(value.to_s)
-      end
-    end
-
-    ESCAPES = {
-      "\"" => "\\\"", "\\" => "\\\\", "\n" => "\\n", "\t" => "\\t",
-      "\r" => "\\r", "\b" => "\\b", "\f" => "\\f"
-    }.freeze
-
-    def self.quote(text)
-      out = "\""
-      text.each_char do |char|
-        escaped = ESCAPES[char]
-        out << if escaped
-                 escaped
-               elsif char.ord < 0x20
-                 format("\\u%04x", char.ord)
-               else
-                 char
-               end
-      end
-      out << "\""
-    end
-  end
-
   # 收集起来的策略，按声明顺序。
   def self.strategies
     @strategies ||= []
@@ -68,11 +32,11 @@ module JohnnyDSL
 
   # 最终交给 Rust 的那段 JSON。
   def self.__ir__
-    JSON.dump({
+    {
       "version" => 1,
       "strategies" => strategies.map(&:to_ir),
       "failures" => failures,
-    })
+    }.to_json
   end
 
   # 一份策略声明。方法名就是 DSL 的词，每个词只做一件事：把值记下来。

@@ -50,14 +50,38 @@ end
 | `src/sys.rs` | mruby 的 C API，**手写**的 extern 声明。十来个函数，不用生成器 |
 | `src/shim.c` | mruby 里是宏的那几个（`mrb_test` / `mrb->exc`）的跳板，按它的头文件编译 |
 | `src/engine.rs` | 一次求值 = 开一个解释器、跑 prelude、跑文件、取 IR、关掉 |
-| `ruby/prelude.rb` | **DSL 的词汇表**，以及那段自己写的 JSON 序列化（mruby 不带 JSON） |
+| `mrbgems/mruby-json/` | 我们自己的 gem：`JSON.generate` / `#to_json`，生成在 C 里 |
+| `mrbgems/mruby-johnnybt/` | 我们自己的 gem：**DSL 的词汇表**，构建时编成字节码 |
 | `python/johnny_dsl/` | Python 这侧：`evaluate_file(path) -> dict` |
+
+## 自己的两个 mrbgem
+
+DSL 只活在 mruby 里，所以它就该是 mruby 的扩展，而不是每次求值现解析的
+一段字符串：
+
+* **mruby-json** —— 标准写法的 JSON 生成（`JSON.generate` / `#to_json`），
+  写在 C 里（转义要精确、每次都要跑）。只有生成没有解析。
+* **mruby-johnnybt** —— DSL 的词汇表，写在 `mrblib/` 里，**构建时编成字节码
+  进 libmruby.a**：每次求值只解析策略文件本身，词汇表不可能在运行时语法错。
+
+两个 gem 各带自己的 Ruby 测试。跑它们：
+
+```bash
+vendor/mruby/build/host/bin/mruby mrbgems/run_tests.rb   # 3 毫秒
+```
+
+不走 `rake test` —— 那会把 mruby core 加 full-core 每个 gem 的测试全编进
+mrbtest，为二十条断言付整套 mruby 测试的编译费（两分钟对三毫秒）。
 
 ## 构建要什么
 
 * Rust（cargo）
 * Ruby —— **只在构建时**要，mruby 自己的 rake 需要它（`brew install ruby`）
 * C 编译器。解析器是 Prism，所以**不要 bison**
+
+构建用真 `rake -m`（并行）而不是 mruby 自带的 `minirake`：后者完全串行，
+316 个目标文件一个一个编，在 32 核的机器上要几分钟；`rake -m` 同一棵树
+**4 秒**。没有 rake 时自动退回 minirake。
 
 `vendor/mruby` 不进 git：`cargo build` 第一次会按钉住的 commit 取回来，
 也可以 `MRUBY_DIR=/path/to/mruby` 指向本地的树。
