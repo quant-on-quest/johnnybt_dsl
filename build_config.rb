@@ -11,9 +11,9 @@ MRuby::Build.new do |conf|
   conf.toolchain
   conf.gembox 'full-core'
 
-  # 我们自己的两个扩展：JSON 生成，和 DSL 的词汇表。
+  # 我们自己的扩展：JSON 生成。词汇表不在这里 —— 那是使用方的事，
+  # 这个包只提供机器。
   conf.gem File.expand_path('mrbgems/mruby-json', __dir__)
-  conf.gem File.expand_path('mrbgems/mruby-johnnybt', __dir__)
 
   # Position-independent: the archive is linked into a Python extension
   # module, which is loaded as a shared object.

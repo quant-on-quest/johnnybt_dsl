@@ -10,7 +10,7 @@
 //! is only valid while its `mrb_state` lives, and only on the thread that
 //! made it.
 
-use std::ffi::{c_char, c_int};
+use std::ffi::{c_char, c_int, c_void};
 
 /// The interpreter. Opaque: we only ever hold a pointer to it.
 #[repr(C)]
@@ -60,4 +60,23 @@ unsafe extern "C" {
     /// than a function, so reading it needs a trampoline like the macros do.
     pub fn johnny_mrb_exception(mrb: *mut MrbState) -> MrbValue;
     pub fn johnny_mrb_clear_exception(mrb: *mut MrbState);
+
+    /// Compile source to bytecode, or null with the exception on the state.
+    /// Bytecode outlives the interpreter that made it, which is the whole
+    /// point: compile a vocabulary once, load it into every evaluation.
+    pub fn johnny_mrb_compile(
+        mrb: *mut MrbState,
+        source: *const c_char,
+        name: *const c_char,
+        size: *mut usize,
+    ) -> *mut u8;
+    pub fn johnny_mrb_free(mrb: *mut MrbState, pointer: *mut c_void);
+
+    /// Load bytecode into an interpreter and run it.
+    pub fn mrb_load_irep_buf_cxt(
+        mrb: *mut MrbState,
+        bytes: *const c_void,
+        size: usize,
+        context: *mut MrbcContext,
+    ) -> MrbValue;
 }

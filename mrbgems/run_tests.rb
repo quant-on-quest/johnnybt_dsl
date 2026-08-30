@@ -1,10 +1,11 @@
-# 跑我们这两个 gem 自己的测试。
+# Run this gem's own tests.
 #
 #     build/host/bin/mruby mrbgems/run_tests.rb
 #
-# 不走 `rake test`：那个会把 mruby core 加 full-core 里每个 gem 的测试全
-# 编进 mrbtest，为二十条断言付整套 mruby 测试的编译费。测试文件仍写成
-# mrbtest 认的 `assert` 形式，所以谁想跑 `rake test` 一样跑得起来。
+# Not through `rake test`: that compiles mruby's core suite and every
+# full-core gem's tests into mrbtest — the whole of mruby's test build for
+# twenty assertions here. The test files are still written in the `assert`
+# form mrbtest knows, so `rake test` runs them too.
 
 $passed = 0
 $failed = []
@@ -19,25 +20,22 @@ end
 def assert_equal(expected, actual)
   return if expected == actual
 
-  raise "期待 #{expected.inspect}，得到 #{actual.inspect}"
+  raise "expected #{expected.inspect}, got #{actual.inspect}"
 end
 
 def assert_true(value)
-  raise "期待真，得到 #{value.inspect}" unless value
+  raise "expected a true value, got #{value.inspect}" unless value
 end
 
 def assert_raise(kind)
   yield
-  raise "期待抛 #{kind}，什么都没抛"
+  raise "expected #{kind}, nothing was raised"
 rescue StandardError => e
-  raise "期待抛 #{kind}，抛的是 #{e.class}" unless e.is_a?(kind)
+  raise "expected #{kind}, got #{e.class}" unless e.is_a?(kind)
 end
 
-[
-  "mrbgems/mruby-json/test/json.rb",
-  "mrbgems/mruby-johnnybt/test/dsl.rb",
-].each { |file| eval(File.read(file), nil, file) }
+["mrbgems/mruby-json/test/json.rb"].each { |file| eval(File.read(file), nil, file) }
 
-puts "#{$passed} 条通过，#{$failed.size} 条失败"
+puts "#{$passed} passed, #{$failed.size} failed"
 $failed.each { |one| puts "  #{one}" }
 exit($failed.empty? ? 0 : 1)

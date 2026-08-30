@@ -63,7 +63,7 @@ fn vendored() -> PathBuf {
         Command::new("git")
             .args(["fetch", "--depth", "1", "origin", &reference])
             .current_dir(&into),
-        "git fetch (是不是没网？也可以用 MRUBY_DIR 指向本地的 mruby 源码树)",
+        "git fetch (no network? MRUBY_DIR can point at a local mruby tree)",
     );
     run(
         Command::new("git").args(["checkout", "-q", "FETCH_HEAD"]).current_dir(&into),
@@ -78,9 +78,10 @@ fn build(source: &Path) -> PathBuf {
         .join("build_config.rb");
     let archive = source.join("build").join("host").join("lib").join("libmruby.a");
     if !archive.is_file() {
-        // mruby 自带的 minirake 是**串行**的：316 个目标文件一个一个编，在
-        // 一台 32 核的机器上要几分钟。真 rake 的 `-m`（multitask）并行跑，
-        // 实测同一棵树 4 秒。有 rake 就用它，没有再退回 minirake。
+        // mruby's own minirake is **serial**: 316 objects compiled one at a
+        // time, minutes on a 32-core machine. Real rake's `-m` (multitask)
+        // runs them in parallel — 4 seconds for the same tree, measured.
+        // Use it when it is there, fall back to minirake when it is not.
         let parallel = Command::new("rake")
             .arg("-m")
             .current_dir(source)
@@ -93,7 +94,7 @@ fn build(source: &Path) -> PathBuf {
                     .arg("./minirake")
                     .current_dir(source)
                     .env("MRUBY_CONFIG", &config),
-                "mruby 的构建（要有 ruby：brew install ruby / apt install ruby）",
+                "the mruby build (it needs ruby: brew install ruby / apt install ruby)",
             );
         }
     }
@@ -123,11 +124,11 @@ fn shim(source: &Path) {
             .arg("-o")
             .arg(&object)
             .arg("src/shim.c"),
-        "编译 shim.c",
+        "compiling shim.c",
     );
     run(
         Command::new("ar").arg("crs").arg(&archive).arg(&object),
-        "打包 shim",
+        "archiving the shim",
     );
     println!("cargo:rustc-link-search=native={}", out.display());
     println!("cargo:rustc-link-lib=static=johnny_shim");
@@ -142,6 +143,6 @@ fn ruby() -> String {
 fn run(command: &mut Command, what: &str) {
     let status = command
         .status()
-        .unwrap_or_else(|error| panic!("{what} 跑不起来：{error}"));
-    assert!(status.success(), "{what} 失败了（{status}）");
+        .unwrap_or_else(|error| panic!("{what} would not start: {error}"));
+    assert!(status.success(), "{what} failed ({status})");
 }

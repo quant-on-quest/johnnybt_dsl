@@ -1,84 +1,100 @@
-"""策略 DSL：一门真正的语言写策略，一段 JSON IR 过界。
+"""An mruby virtual machine, ready to use.
 
-一份策略是一段程序，所以写它的该是一门语言。mruby 跑在这个扩展里面，DSL
-的词汇表用 Ruby 写（`ruby/prelude.rb`），回到 Python 的只有一样东西：IR。
-两边谁都不必迁就谁的语法 —— 这正是 YAML 和「用 Python 硬凑 DSL」一直在
-付的代价。
+The package provides the machine and nothing else: run some chunks of Ruby
+in order, then one expression, and get back the string it produced. What
+those chunks define is yours — words, modules, whatever shape of answer you
+want. A language baked in here would make one library serve one project.
 
-    from johnny_dsl import evaluate_file
-    ir = evaluate_file("strategies/小市值/周黎明.rb")
+Installing needs neither a C compiler nor Ruby: the wheel ships mruby
+already compiled in.
+
+    from johnny_dsl import compile, run
+
+    words = compile(open("dsl.rb").read(), "dsl.rb")   # once per process
+    answer = run([(words, "dsl.rb"), (source, path)], answer="MyDSL.result")
+
+A chunk is Ruby source (`str`) or bytecode (`bytes`) — bytecode does not
+belong to the interpreter that ran it, so a chunk you run again and again is
+compiled once and loaded after.
 """
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from johnny_dsl._lib import evaluate as _evaluate
-from johnny_dsl._lib import evaluate_file as _evaluate_file
+from johnny_dsl._lib import compile as _compile
+from johnny_dsl._lib import run as _run
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Sequence
 
-__all__ = ["DSLError", "evaluate", "evaluate_file"]
+__all__ = ["DSLError", "compile", "run", "run_file"]
 
 
 class DSLError(Exception):
-    """一份 DSL 跑不通 —— 消息里带着 Ruby 那边的错误和回溯。"""
+    """Some Ruby did not run — the message carries its own error."""
 
 
-def evaluate(source: str, name: str = "<dsl>") -> dict[str, Any]:
-    """Evaluate DSL source and return its IR.
+def compile(source: str, name: str = "<chunk>") -> bytes:  # noqa: A001 - it compiles; the builtin is not what a caller means here
+    """Compile Ruby source to bytecode.
 
     Args:
-        source: The strategy source.
+        source: The Ruby to compile.
         name: What to call it in a backtrace.
 
     Returns:
-        The IR: `{"version", "strategies": [...], "failures": [...]}`.
+        The bytecode, loadable into any later interpreter.
 
     Raises:
-        DSLError: If the source does not evaluate, or a strategy in it
-            raised — a failure carried in the IR is raised here, because a
-            file that half-declared itself is not a file to go on with.
+        DSLError: If it does not compile.
     """
-    return _checked(_evaluate(source, name))
+    try:
+        return _compile(source, name)
+    except ValueError as error:
+        raise DSLError(str(error)) from error
 
 
-def evaluate_file(path: Path | str) -> dict[str, Any]:
-    """Evaluate a DSL file and return its IR.
+def run(chunks: Sequence[tuple[str | bytes, str] | str | bytes], answer: str = "nil.to_s") -> str:
+    """Run chunks of Ruby in order, then an expression, and return its string.
 
     Args:
-        path: The file to read.
+        chunks: What to run, in order. Each is `(source_or_bytecode, name)`,
+            or a bare `str`/`bytes` when the name does not matter.
+        answer: The expression run last, whose string value comes back.
 
     Returns:
-        The IR.
+        Whatever the answer produced.
 
     Raises:
-        DSLError: If it does not evaluate.
-        OSError: If it cannot be read.
+        DSLError: If a chunk does not run.
     """
-    return _checked(_evaluate_file(str(path)))
+    try:
+        return _run(list(chunks), answer)
+    except ValueError as error:
+        raise DSLError(str(error)) from error
 
 
-def _checked(rendered: str) -> dict[str, Any]:
-    """Parse the engine's JSON and refuse an IR carrying failures.
+def run_file(
+    path: str,
+    before: Sequence[tuple[str | bytes, str] | str | bytes] = (),
+    answer: str = "nil.to_s",
+) -> str:
+    """Run a file, after whatever chunks come before it.
 
     Args:
-        rendered: The JSON the engine returned.
+        path: The file to read and run.
+        before: Chunks to run first — the words the file is written in,
+            typically.
+        answer: The expression run last.
 
     Returns:
-        The IR.
+        Whatever the answer produced.
 
     Raises:
-        DSLError: If a strategy in the file raised.
+        DSLError: If it does not run.
+        OSError: If the file cannot be read.
     """
-    ir: dict[str, Any] = json.loads(rendered)
-    failures = ir.get("failures") or []
-    if failures:
-        told = "\n".join(
-            "\n".join([str(one.get("message", "")), *(f"    {line}" for line in one.get("backtrace") or [])])
-            for one in failures
-        )
-        raise DSLError(told)
-    return ir
+    from pathlib import Path
+
+    source = Path(path).read_text(encoding="utf-8")
+    return run([*before, (source, str(path))], answer)

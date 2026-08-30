@@ -1,22 +1,47 @@
 //! A safe shell over one mruby interpreter.
 //!
-//! The whole contract is one function: source in, JSON out. Everything that
-//! makes the DSL a DSL — the vocabulary, the error messages, the shape of
-//! the IR — lives in our own mrbgems (`mrbgems/mruby-johnnybt` for the
-//! words, `mrbgems/mruby-json` for the bytes), compiled into the
-//! interpreter when mruby is built. This file only holds the interpreter's
-//! lifetime and moves two strings across the boundary.
+//! This is a **virtual machine and nothing else**: run some chunks of Ruby
+//! in order, then one more expression, and hand back the string that last
+//! expression produced. Whatever those chunks define — words, modules, an
+//! IR — belongs to the caller. The engine has no idea and no opinion.
 //!
-//! One interpreter per evaluation, opened and closed. A strategy file is
-//! read in milliseconds and an interpreter is cheap; sharing one would mean
-//! one file's constants leaking into the next one's, which is exactly the
-//! kind of quiet difference this project refuses elsewhere.
+//! A chunk may be source or **bytecode**. Bytecode does not belong to the
+//! interpreter that ran it, so a chunk the caller runs again and again is
+//! compiled once and loaded after — which is what keeps "the language is
+//! defined by whoever uses it" from meaning "parse it on every file".
+//!
+//! One interpreter per evaluation, opened and closed. A file is evaluated
+//! in a millisecond and an interpreter is cheap; sharing one would let one
+//! file's constants leak into the next, which is the kind of quiet
+//! difference this project refuses everywhere else.
 
-use std::ffi::{CStr, CString};
+use std::ffi::{c_void, CStr, CString};
+use std::sync::{Mutex, MutexGuard};
 
 use crate::sys;
 
-/// What went wrong, in words the author of the strategy can act on.
+/// Held for the length of a run.
+///
+/// mruby's Prism-based compiler keeps **global** state: `mrc_init_presym`
+/// writes a file-static `offset` every time an interpreter compiles
+/// something, so two interpreters compiling at once corrupt each other's
+/// symbol ids (a debug build asserts; a release build quietly gets the
+/// wrong symbols). Interpreters are otherwise independent, so the lock is
+/// only around the compiling — which is the whole of a run.
+///
+/// A run is a millisecond. Serialising them costs nothing next to being
+/// wrong in a way that would surface as a mystery three layers up.
+static COMPILING: Mutex<()> = Mutex::new(());
+
+/// Take the compiler lock, ignoring a previous panic's poison.
+///
+/// A panicking run leaves no shared state behind — the poison would only
+/// stop later runs from working for no reason.
+fn compiling() -> MutexGuard<'static, ()> {
+    COMPILING.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// What went wrong, in words the author of the source can act on.
 #[derive(Debug)]
 pub struct Failure(pub String);
 
@@ -26,45 +51,96 @@ impl std::fmt::Display for Failure {
     }
 }
 
+/// One chunk to run: Ruby source, or bytecode `compile` produced.
+pub enum Chunk<'a> {
+    /// Source, parsed now.
+    Source(&'a str, &'a str),
+    /// Bytecode, compiled somewhere else.
+    Bytecode(&'a [u8], &'a str),
+}
+
 /// An open interpreter, closed when it drops.
-struct Interpreter(*mut sys::MrbState);
+pub struct Interpreter(*mut sys::MrbState);
 
 impl Interpreter {
     /// Open one.
-    fn open() -> Result<Self, Failure> {
+    ///
+    /// # Errors
+    ///
+    /// When mruby cannot allocate a state.
+    pub fn open() -> Result<Self, Failure> {
         // SAFETY: `mrb_open` allocates a state or returns null.
         let state = unsafe { sys::mrb_open() };
         if state.is_null() {
-            return Err(Failure("mruby 开不起来（内存不够？）".into()));
+            return Err(Failure("mruby would not open (out of memory?)".into()));
         }
         Ok(Self(state))
     }
 
-    /// Evaluate one chunk of source, named for backtraces.
+    /// Open one compile context, shared by every chunk of a run.
     ///
-    /// Returns whatever the chunk's last expression was, as a string when it
-    /// is one.
-    fn eval(&self, source: &str, name: &str) -> Result<Option<String>, Failure> {
-        let source = CString::new(source).map_err(|_| Failure("源码里有 NUL 字节".into()))?;
-        let name = CString::new(name).map_err(|_| Failure("文件名里有 NUL 字节".into()))?;
+    /// Shared on purpose: a context carries the local variables a chunk
+    /// declared, so chunks run in order behave like one program rather than
+    /// like unrelated files that happen to share an interpreter. It is what
+    /// mruby's own shell does between lines.
+    ///
+    /// # Errors
+    ///
+    /// When mruby cannot allocate one.
+    pub fn context(&self) -> Result<Context<'_>, Failure> {
+        // SAFETY: the state is open; the context is freed when it drops.
+        let context = unsafe { sys::mrb_ccontext_new(self.0) };
+        if context.is_null() {
+            return Err(Failure("mruby would not make a compile context".into()));
+        }
+        Ok(Context { interpreter: self, raw: context })
+    }
 
-        // SAFETY: the state is open, and the context is freed on every path
-        // out. `mrb_load_string_cxt` leaves any exception on the state, which
-        // is read before the values are touched.
+    /// Compile source to bytecode.
+    ///
+    /// # Errors
+    ///
+    /// When the source does not compile.
+    pub fn compile(&self, source: &str, name: &str) -> Result<Vec<u8>, Failure> {
+        let source = CString::new(source).map_err(|_| Failure("the source carries a NUL byte".into()))?;
+        let named = CString::new(name).map_err(|_| Failure("the name carries a NUL byte".into()))?;
+
+        // SAFETY: mruby's buffer is copied out and freed here on every path.
         unsafe {
-            let context = sys::mrb_ccontext_new(self.0);
-            if context.is_null() {
-                return Err(Failure("mruby 的编译上下文建不起来".into()));
+            let mut size: usize = 0;
+            let bytes = sys::johnny_mrb_compile(self.0, source.as_ptr(), named.as_ptr(), &mut size);
+            if bytes.is_null() {
+                let exception = sys::johnny_mrb_exception(self.0);
+                let told = if sys::johnny_mrb_test(exception) != 0 {
+                    let rendered = self.render(exception);
+                    sys::johnny_mrb_clear_exception(self.0);
+                    rendered
+                } else {
+                    "it does not compile".into()
+                };
+                return Err(Failure(format!("{name}: {told}")));
             }
-            sys::mrb_ccontext_filename(self.0, context, name.as_ptr());
-            let value = sys::mrb_load_string_cxt(self.0, source.as_ptr(), context);
-            sys::mrb_ccontext_free(self.0, context);
+            let out = std::slice::from_raw_parts(bytes, size).to_vec();
+            sys::johnny_mrb_free(self.0, bytes as *mut c_void);
+            Ok(out)
+        }
+    }
 
+    /// Read what an evaluation left, or the exception it raised.
+    ///
+    /// # Safety
+    ///
+    /// The value must belong to this interpreter and still be live.
+    unsafe fn landed(&self, value: sys::MrbValue, name: &str) -> Result<Option<String>, Failure> {
+        unsafe {
             let exception = sys::johnny_mrb_exception(self.0);
             if sys::johnny_mrb_test(exception) != 0 {
                 let rendered = self.render(exception);
                 sys::johnny_mrb_clear_exception(self.0);
-                return Err(Failure(rendered));
+                // Ruby's parse errors name no file, so the file goes in
+                // front: an engine that cannot say *which* file failed is no
+                // better than the YAML it replaced.
+                return Err(Failure(format!("{name}: {rendered}")));
             }
             Ok(self.text(value))
         }
@@ -96,8 +172,64 @@ impl Interpreter {
     unsafe fn render(&self, value: sys::MrbValue) -> String {
         unsafe {
             let rendered = sys::mrb_obj_as_string(self.0, value);
-            self.text(rendered).unwrap_or_else(|| "（说不清的错误）".into())
+            self.text(rendered).unwrap_or_else(|| "(an error that will not render)".into())
         }
+    }
+}
+
+/// One compile context, and the chunks run through it.
+pub struct Context<'a> {
+    interpreter: &'a Interpreter,
+    raw: *mut sys::MrbcContext,
+}
+
+impl Context<'_> {
+    /// Evaluate one chunk of source, named for backtraces.
+    ///
+    /// # Errors
+    ///
+    /// When the source does not parse, or raises.
+    pub fn eval(&self, source: &str, name: &str) -> Result<Option<String>, Failure> {
+        let source = CString::new(source).map_err(|_| Failure("the source carries a NUL byte".into()))?;
+        let named = CString::new(name).map_err(|_| Failure("the name carries a NUL byte".into()))?;
+
+        // SAFETY: the state and context are both live; the exception is read
+        // before any value is touched.
+        unsafe {
+            let state = self.interpreter.0;
+            sys::mrb_ccontext_filename(state, self.raw, named.as_ptr());
+            let value = sys::mrb_load_string_cxt(state, source.as_ptr(), self.raw);
+            self.interpreter.landed(value, name)
+        }
+    }
+
+    /// Load and run bytecode a previous compilation produced.
+    ///
+    /// # Errors
+    ///
+    /// When the bytecode does not load, or raises.
+    pub fn load(&self, bytecode: &[u8], name: &str) -> Result<Option<String>, Failure> {
+        let named = CString::new(name).map_err(|_| Failure("the name carries a NUL byte".into()))?;
+
+        // SAFETY: as above; the buffer is read, never kept.
+        unsafe {
+            let state = self.interpreter.0;
+            sys::mrb_ccontext_filename(state, self.raw, named.as_ptr());
+            let value = sys::mrb_load_irep_buf_cxt(
+                state,
+                bytecode.as_ptr() as *const c_void,
+                bytecode.len(),
+                self.raw,
+            );
+            self.interpreter.landed(value, name)
+        }
+    }
+}
+
+impl Drop for Context<'_> {
+    fn drop(&mut self) {
+        // SAFETY: made by `context`, freed once, while the state still lives.
+        unsafe { sys::mrb_ccontext_free(self.interpreter.0, self.raw) }
     }
 }
 
@@ -108,34 +240,46 @@ impl Drop for Interpreter {
     }
 }
 
-/// Evaluate a strategy file and return its IR as JSON.
+/// Run chunks in order, then one expression, and return its string.
 ///
 /// Args:
-///   source: The strategy's own source.
-///   name: What to call it in a backtrace — its path, usually.
+///   chunks: What to run, in order. Each is source or bytecode, with the
+///     name it should carry in a backtrace.
+///   answer: The expression run last, whose string value comes back.
 ///
 /// Returns:
-///   The IR, as JSON text.
+///   Whatever the answer expression produced.
 ///
 /// Errors:
-///   A `Failure` carrying the Ruby error and its backtrace, or the loader's
-///   own complaint when the file declared nothing.
-pub fn evaluate(source: &str, name: &str) -> Result<String, Failure> {
+///   A `Failure` naming the chunk and carrying Ruby's own message.
+pub fn run(chunks: &[Chunk<'_>], answer: &str) -> Result<String, Failure> {
+    let _serialised = compiling();
     let interpreter = Interpreter::open()?;
-    // The vocabulary is already in the interpreter: `mruby-johnnybt` is a
-    // gem, so its Ruby half was compiled to bytecode when mruby was built.
-    // Nothing is parsed here but the strategy itself, and a vocabulary that
-    // does not compile is a build failure rather than a runtime one.
-    //
-    // A strategy author's mistake is rescued on the Ruby side into an IR
-    // failure, so the common error path needs no C-level handling at all.
-    // Ruby's parse errors name no file, so the file is put in front: an
-    // engine that cannot say *which* strategy failed is no better than YAML.
-    interpreter
-        .eval(source, name)
-        .map_err(|failure| Failure(format!("{name}: {}", failure.0)))?;
-    match interpreter.eval("JohnnyDSL.__ir__", "<johnny_dsl finish>")? {
-        Some(json) => Ok(json),
-        None => Err(Failure("DSL 没有产出 IR —— prelude 坏了？".into())),
+    let context = interpreter.context()?;
+    for chunk in chunks {
+        match chunk {
+            Chunk::Source(text, name) => context.eval(text, name)?,
+            Chunk::Bytecode(bytes, name) => context.load(bytes, name)?,
+        };
     }
+    match context.eval(answer, "<answer>")? {
+        Some(text) => Ok(text),
+        None => Err(Failure(format!("{answer} produced no string"))),
+    }
+}
+
+/// Compile source to bytecode, for a chunk that will be run often.
+///
+/// Args:
+///   source: What to compile.
+///   name: What to call it in a backtrace.
+///
+/// Returns:
+///   The bytecode.
+///
+/// Errors:
+///   A `Failure` when it does not compile.
+pub fn compile(source: &str, name: &str) -> Result<Vec<u8>, Failure> {
+    let _serialised = compiling();
+    Interpreter::open()?.compile(source, name)
 }
