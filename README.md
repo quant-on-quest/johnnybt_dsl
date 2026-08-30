@@ -20,7 +20,7 @@ ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
 | | |
 |---|---|
 | `compile(source, name) -> bytes` | 编成字节码。字节码和解释器无关，编一次到处 load |
-| `run(chunks, answer) -> str` | 按顺序跑几段（源码或字节码），再跑 `answer`，返回它的字符串 |
+| `run(chunks, answer, context) -> str` | 按顺序跑几段（源码或字节码），再跑 `answer`，返回它的字符串。`context` 进全局变量 `$johnny_context`（惯例是 JSON，基类懒解析成 `JohnnyDSL.context`） |
 | `run_file(path, before, answer)` | 同上，最后一段读自文件 |
 
 一次 `run` 一个解释器：一份文件定义的东西不会漏进下一份。几段之间共用一个
@@ -34,8 +34,8 @@ ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
 | `src/sys.rs` | mruby 的 C API，**手写**的 extern 声明。十来个函数，不用生成器 |
 | `src/shim.c` | mruby 里是宏的那几个（`mrb_test` / `mrb->exc`）和编译入口的跳板 |
 | `src/engine.rs` | 解释器的生命周期，以及「跑几段、取一个字符串」 |
-| `mrbgems/mruby-json/` | 我们自己的 gem：`JSON.generate` / `#to_json`，生成在 C 里 |
-| `mrbgems/mruby-dsl/` | 我们自己的 gem：`JohnnyDSL::Base` —— DSL 的基类（注册、declare、逐语句 trouble、manifest/ir 信封）。**词不在这里**，词归定义语言的项目 |
+| `mrbgems/mruby-json/` | 我们自己的 gem：`JSON.generate` / `#to_json` / `JSON.parse`，双向都在 C 里（解析错误带字节位） |
+| `mrbgems/mruby-dsl/` | 我们自己的 gem：`JohnnyDSL::Base` —— DSL 的基类（注册、declare、逐语句 trouble、manifest/ir 信封、`JohnnyDSL.context`）。**词不在这里**，词归定义语言的项目 |
 
 ## 一处 mruby 的实情
 

@@ -51,3 +51,36 @@ assert('a structure that contains itself is refused, not run off the stack') do
   ring << ring
   assert_raise(ArgumentError) { ring.to_json }
 end
+
+assert('JSON.parse on the basic types') do
+  assert_equal nil, JSON.parse("null")
+  assert_equal true, JSON.parse("true")
+  assert_equal(-12, JSON.parse("-12"))
+  assert_equal 2.5, JSON.parse("2.5")
+  assert_equal "a", JSON.parse('"a"')
+  assert_equal [1, 2], JSON.parse("[1, 2]")
+  assert_equal({ "k" => 1 }, JSON.parse('{"k": 1}'))
+end
+
+assert('JSON.parse decodes escapes, UTF-8 passes through') do
+  assert_equal "a\"b\\c\nd", JSON.parse('"a\"b\\\\c\nd"')
+  assert_equal "中文😀", JSON.parse('"中文😀"')
+  assert_equal "😀", JSON.parse('"😀"')
+end
+
+assert('JSON.parse round-trips what JSON.generate wrote') do
+  value = { "名字" => "甲", "n" => [1, 2.5, nil, true, false], "嵌" => { "套" => [] } }
+  assert_equal value, JSON.parse(JSON.generate(value))
+end
+
+assert('JSON.parse refuses garbage with the byte offset') do
+  assert_raise(ArgumentError) { JSON.parse("{bad}") }
+  assert_raise(ArgumentError) { JSON.parse('"x"y') }
+  assert_raise(ArgumentError) { JSON.parse("[1,") }
+  assert_raise(ArgumentError) { JSON.parse('"\ud83d"') }
+end
+
+assert('JSON.parse keeps integers integral when they fit') do
+  assert_equal Integer, JSON.parse("9007199254740993").class
+  assert_equal Float, JSON.parse("1e400").class
+end

@@ -66,3 +66,7 @@ assert('the envelope groups declarations by language') do
   assert_true JohnnyDSL.ir.include?('"order"')
   assert_true JohnnyDSL.ir.include?('"shipping"')
 end
+
+assert('the context is an empty hash when nothing was handed over') do
+  assert_equal({}, JohnnyDSL.context)
+end

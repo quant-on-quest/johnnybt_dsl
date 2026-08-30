@@ -96,6 +96,25 @@ impl Interpreter {
         Ok(Context { interpreter: self, raw: context })
     }
 
+    /// Set one global variable to a string, `$name` style.
+    ///
+    /// How a caller hands a context over: a JSON blob lands in a global
+    /// and the Ruby side parses it lazily. Through a global rather than
+    /// interpolated into source, because a string in a global has no
+    /// escaping problem.
+    ///
+    /// # Errors
+    ///
+    /// When the name or value carries a NUL byte.
+    pub fn set_global(&self, name: &str, value: &str) -> Result<(), Failure> {
+        let named = CString::new(name).map_err(|_| Failure("the name carries a NUL byte".into()))?;
+        // SAFETY: the state is open; the bytes are copied by mruby.
+        unsafe {
+            sys::johnny_mrb_set_global(self.0, named.as_ptr(), value.as_ptr() as *const _, value.len());
+        }
+        Ok(())
+    }
+
     /// Compile source to bytecode.
     ///
     /// # Errors
@@ -246,15 +265,21 @@ impl Drop for Interpreter {
 ///   chunks: What to run, in order. Each is source or bytecode, with the
 ///     name it should carry in a backtrace.
 ///   answer: The expression run last, whose string value comes back.
+///   given: A context handed to the program as the global `$johnny_context`
+///     before anything runs — a JSON blob by convention, though the engine
+///     neither parses nor cares.
 ///
 /// Returns:
 ///   Whatever the answer expression produced.
 ///
 /// Errors:
 ///   A `Failure` naming the chunk and carrying Ruby's own message.
-pub fn run(chunks: &[Chunk<'_>], answer: &str) -> Result<String, Failure> {
+pub fn run(chunks: &[Chunk<'_>], answer: &str, given: Option<&str>) -> Result<String, Failure> {
     let _serialised = compiling();
     let interpreter = Interpreter::open()?;
+    if let Some(value) = given {
+        interpreter.set_global("$johnny_context", value)?;
+    }
     let context = interpreter.context()?;
     for chunk in chunks {
         match chunk {

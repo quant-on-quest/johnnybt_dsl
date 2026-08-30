@@ -28,6 +28,8 @@ use pyo3::types::PyBytes;
 ///     chunks: What to run, in order. Each is `(source_or_bytecode, name)`,
 ///         or a bare string or bytes named `<chunk>`.
 ///     answer: The expression run last, whose string value comes back.
+///     context: Handed to the program as the global `$johnny_context`
+///         before anything runs — a JSON blob by convention.
 ///
 /// Returns:
 ///     Whatever the answer produced, as text.
@@ -36,8 +38,8 @@ use pyo3::types::PyBytes;
 ///     ValueError: If a chunk does not run — the message names it and
 ///         carries Ruby's own error.
 #[pyfunction]
-#[pyo3(signature = (chunks, answer = "nil.to_s"))]
-fn run(chunks: Vec<Bound<'_, PyAny>>, answer: &str) -> PyResult<String> {
+#[pyo3(signature = (chunks, answer = "nil.to_s", context = None))]
+fn run(chunks: Vec<Bound<'_, PyAny>>, answer: &str, context: Option<&str>) -> PyResult<String> {
     // The owned halves live here so the borrowed `Chunk`s stay valid for
     // the whole call.
     let mut owned: Vec<(Option<String>, Option<Vec<u8>>, String)> = Vec::with_capacity(chunks.len());
@@ -63,7 +65,7 @@ fn run(chunks: Vec<Bound<'_, PyAny>>, answer: &str) -> PyResult<String> {
         })
         .collect();
 
-    engine::run(&ordered, answer).map_err(|failure| PyValueError::new_err(failure.0))
+    engine::run(&ordered, answer, context).map_err(|failure| PyValueError::new_err(failure.0))
 }
 
 /// Compile Ruby source to bytecode.

@@ -54,13 +54,20 @@ def compile(source: str, name: str = "<chunk>") -> bytes:  # noqa: A001 - it com
         raise DSLError(str(error)) from error
 
 
-def run(chunks: Sequence[tuple[str | bytes, str] | str | bytes], answer: str = "nil.to_s") -> str:
+def run(
+    chunks: Sequence[tuple[str | bytes, str] | str | bytes],
+    answer: str = "nil.to_s",
+    context: str | None = None,
+) -> str:
     """Run chunks of Ruby in order, then an expression, and return its string.
 
     Args:
         chunks: What to run, in order. Each is `(source_or_bytecode, name)`,
             or a bare `str`/`bytes` when the name does not matter.
         answer: The expression run last, whose string value comes back.
+        context: Handed to the program as the global `$johnny_context`
+            before anything runs — a JSON blob by convention (the shipped
+            base class parses it lazily as `JohnnyDSL.context`).
 
     Returns:
         Whatever the answer produced.
@@ -69,7 +76,7 @@ def run(chunks: Sequence[tuple[str | bytes, str] | str | bytes], answer: str = "
         DSLError: If a chunk does not run.
     """
     try:
-        return _run(list(chunks), answer)
+        return _run(list(chunks), answer, context)
     except ValueError as error:
         raise DSLError(str(error)) from error
 
@@ -78,6 +85,7 @@ def run_file(
     path: str,
     before: Sequence[tuple[str | bytes, str] | str | bytes] = (),
     answer: str = "nil.to_s",
+    context: str | None = None,
 ) -> str:
     """Run a file, after whatever chunks come before it.
 
@@ -86,6 +94,7 @@ def run_file(
         before: Chunks to run first — the words the file is written in,
             typically.
         answer: The expression run last.
+        context: Handed to the program as `$johnny_context`.
 
     Returns:
         Whatever the answer produced.
@@ -97,4 +106,4 @@ def run_file(
     from pathlib import Path
 
     source = Path(path).read_text(encoding="utf-8")
-    return run([*before, (source, str(path))], answer)
+    return run([*before, (source, str(path))], answer, context)

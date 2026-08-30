@@ -14,6 +14,7 @@
 #include <mruby/irep.h>
 #include <mruby/proc.h>
 #include <mruby/string.h>
+#include <mruby/variable.h>
 
 int johnny_mrb_test(mrb_value value) { return mrb_test(value) ? 1 : 0; }
 
@@ -65,3 +66,14 @@ uint8_t *johnny_mrb_compile(mrb_state *mrb, const char *source, const char *name
 }
 
 void johnny_mrb_free(mrb_state *mrb, void *pointer) { mrb_free(mrb, pointer); }
+
+/* Set one global variable to a string value.
+ *
+ * How a context crosses into the interpreter: the host hands a JSON blob,
+ * this puts it in a global, and Ruby parses it lazily. A string through a
+ * global has no source-escaping problem; interpolating it into generated
+ * source would.
+ */
+void johnny_mrb_set_global(mrb_state *mrb, const char *name, const char *value, size_t size) {
+  mrb_gv_set(mrb, mrb_intern_cstr(mrb, name), mrb_str_new(mrb, value, size));
+}

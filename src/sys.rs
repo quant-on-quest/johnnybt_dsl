@@ -71,6 +71,7 @@ unsafe extern "C" {
         size: *mut usize,
     ) -> *mut u8;
     pub fn johnny_mrb_free(mrb: *mut MrbState, pointer: *mut c_void);
+    pub fn johnny_mrb_set_global(mrb: *mut MrbState, name: *const c_char, value: *const c_char, size: usize);
 
     /// Load bytecode into an interpreter and run it.
     pub fn mrb_load_irep_buf_cxt(

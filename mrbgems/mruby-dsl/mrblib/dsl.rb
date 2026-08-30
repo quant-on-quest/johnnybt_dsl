@@ -28,6 +28,16 @@ module JohnnyDSL
   VERSION = 1
 
   class << self
+    # What the host handed this run, parsed lazily from the global the
+    # engine set. `{}` when nothing was handed — words can always index it.
+    #
+    # By convention the host of a project puts the project's configuration
+    # under "config" and what else its languages need beside it; the keys
+    # are the host's contract, not this gem's.
+    def context
+      @context ||= $johnny_context ? JSON.parse($johnny_context) : {}
+    end
+
     # Every language defined so far, in definition order.
     def dsls
       @dsls ||= []

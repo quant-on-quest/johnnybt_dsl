@@ -8,7 +8,7 @@ use johnny_dsl::{compile_source, run_chunks, Chunk};
 
 /// Run one source chunk and return the answer.
 fn answer(source: &str, answer: &str) -> String {
-    run_chunks(&[Chunk::Source(source, "<test>")], answer).unwrap_or_else(|failure| panic!("{failure}"))
+    run_chunks(&[Chunk::Source(source, "<test>")], answer, None).unwrap_or_else(|failure| panic!("{failure}"))
 }
 
 #[test]
@@ -38,6 +38,7 @@ fn chunks_run_in_order_and_see_each_other() {
             Chunk::Source("answer = twice(21)", "<second>"),
         ],
         "answer.to_s",
+        None,
     )
     .expect("both chunks run");
 
@@ -53,6 +54,7 @@ fn bytecode_is_sources_equal() {
             Chunk::Source("answer = twice(21)", "<file>"),
         ],
         "answer.to_s",
+        None,
     )
     .expect("bytecode loads");
 
@@ -73,6 +75,7 @@ fn the_caller_defines_what_the_answer_looks_like() {
     let out = run_chunks(
         &[Chunk::Source(words, "<words>"), Chunk::Source(r#"note "first"; note "second""#, "<file>")],
         "Mine.result",
+        None,
     )
     .expect("it runs");
 
@@ -81,7 +84,7 @@ fn the_caller_defines_what_the_answer_looks_like() {
 
 #[test]
 fn a_failing_chunk_names_itself() {
-    let failure = run_chunks(&[Chunk::Source("raise 'nope'", "strategy.rb")], "nil.to_s").expect_err("it raises");
+    let failure = run_chunks(&[Chunk::Source("raise 'nope'", "strategy.rb")], "nil.to_s", None).expect_err("it raises");
 
     assert!(format!("{failure}").contains("strategy.rb"), "{failure}");
     assert!(format!("{failure}").contains("nope"), "{failure}");
@@ -89,7 +92,7 @@ fn a_failing_chunk_names_itself() {
 
 #[test]
 fn a_syntax_error_names_its_chunk_too() {
-    let failure = run_chunks(&[Chunk::Source("def unfinished(", "broken.rb")], "nil.to_s").expect_err("it is broken");
+    let failure = run_chunks(&[Chunk::Source("def unfinished(", "broken.rb")], "nil.to_s", None).expect_err("it is broken");
 
     assert!(format!("{failure}").contains("broken.rb"), "{failure}");
 }
@@ -125,6 +128,7 @@ fn the_dsl_base_ships_with_the_machine() {
             "probe.rb",
         )],
         "JohnnyDSL.ir",
+        None,
     )
     .expect("the base is in the VM");
 
@@ -137,4 +141,25 @@ fn json_comes_from_the_gem_we_ship() {
     // The one thing the engine does bring: JSON generation, because a
     // string is what crosses back and the escaping has to be exact.
     assert_eq!(answer("", r#"{"name" => "a", "n" => [1, nil]}.to_json"#), r#"{"name":"a","n":[1,null]}"#);
+}
+
+#[test]
+fn a_context_reaches_the_program_as_a_global() {
+    // The host hands a JSON blob; the program reads `$johnny_context`.
+    // The engine neither parses nor cares what is in it.
+    let out = run_chunks(
+        &[Chunk::Source("told = JSON.parse($johnny_context)", "<file>")],
+        r#"told["名字"]"#,
+        Some(r#"{"名字":"甲","n":[1,2]}"#),
+    )
+    .expect("the context is there");
+
+    assert_eq!(out, "甲");
+}
+
+#[test]
+fn without_a_context_the_global_is_nil() {
+    let out = run_chunks(&[], "$johnny_context.inspect", None).expect("it runs");
+
+    assert_eq!(out, "nil");
 }
