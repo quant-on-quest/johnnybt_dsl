@@ -35,6 +35,7 @@ ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
 | `src/shim.c` | mruby 里是宏的那几个（`mrb_test` / `mrb->exc`）和编译入口的跳板 |
 | `src/engine.rs` | 解释器的生命周期，以及「跑几段、取一个字符串」 |
 | `mrbgems/mruby-json/` | 我们自己的 gem：`JSON.generate` / `#to_json`，生成在 C 里 |
+| `mrbgems/mruby-dsl/` | 我们自己的 gem：`JohnnyDSL::Base` —— DSL 的基类（注册、declare、逐语句 trouble、manifest/ir 信封）。**词不在这里**，词归定义语言的项目 |
 
 ## 一处 mruby 的实情
 

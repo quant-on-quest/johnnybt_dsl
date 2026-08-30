@@ -111,6 +111,28 @@ fn every_run_starts_clean() {
 }
 
 #[test]
+fn the_dsl_base_ships_with_the_machine() {
+    // The one convention every hosted language shares: subclass
+    // JohnnyDSL::Base, declare, and the envelope reads it back.
+    let out = run_chunks(
+        &[Chunk::Source(
+            r#"
+            class ProbeDSL < JohnnyDSL::Base
+              describe "a probe"
+            end
+            ProbeDSL.declare({"n" => 1})
+            "#,
+            "probe.rb",
+        )],
+        "JohnnyDSL.ir",
+    )
+    .expect("the base is in the VM");
+
+    assert!(out.contains(r#""probe""#), "{out}");
+    assert!(out.contains(r#""declarations""#), "{out}");
+}
+
+#[test]
 fn json_comes_from_the_gem_we_ship() {
     // The one thing the engine does bring: JSON generation, because a
     // string is what crosses back and the escaping has to be exact.

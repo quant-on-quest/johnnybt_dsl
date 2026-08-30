@@ -34,7 +34,10 @@ rescue StandardError => e
   raise "expected #{kind}, got #{e.class}" unless e.is_a?(kind)
 end
 
-["mrbgems/mruby-json/test/json.rb"].each { |file| eval(File.read(file), nil, file) }
+[
+  "mrbgems/mruby-json/test/json.rb",
+  "mrbgems/mruby-dsl/test/dsl.rb",
+].each { |file| eval(File.read(file), nil, file) }
 
 puts "#{$passed} passed, #{$failed.size} failed"
 $failed.each { |one| puts "  #{one}" }

@@ -11,9 +11,11 @@ MRuby::Build.new do |conf|
   conf.toolchain
   conf.gembox 'full-core'
 
-  # 我们自己的扩展：JSON 生成。词汇表不在这里 —— 那是使用方的事，
-  # 这个包只提供机器。
+  # Our own gems: JSON generation, and the DSL base class. Both are
+  # infrastructure, not vocabulary — what a language *says* stays with
+  # whoever defines it.
   conf.gem File.expand_path('mrbgems/mruby-json', __dir__)
+  conf.gem File.expand_path('mrbgems/mruby-dsl', __dir__)
 
   # Position-independent: the archive is linked into a Python extension
   # module, which is loaded as a shared object.
