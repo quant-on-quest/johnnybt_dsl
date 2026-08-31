@@ -99,21 +99,36 @@ module JohnnyDSL
         @describe || ""
       end
 
-      # Where to read how to write this language. Defaults to the file the
-      # language is defined in — its comments are the documentation.
+      # Where to read how to write this language. Defaults to the sample:
+      # a runnable file with the rules in its comments is the best thing
+      # to hand somebody about to write one, and it cannot drift from what
+      # runs. Declare `doc` to point somewhere else entirely.
       def doc(path = nil)
         @doc = path unless path.nil?
-        @doc || source
+        @doc || sample
       end
 
-      # A working file to copy from.
+      # A working file to copy from — **every language declares one**.
+      #
+      # It is the documentation: `doc` defaults to it, and a file that
+      # runs cannot describe a language that does not. A language without
+      # one is refused when a host asks what it is.
       def sample(path = nil)
         @sample = path unless path.nil?
         @sample
       end
 
       # This language as data, for the manifest.
+      #
+      # Raises when the language declares no sample: a language nobody can
+      # be shown how to write is not finished, and the gap surfaces here,
+      # where its author is looking.
       def to_meta
+        if sample.nil?
+          raise "#{name}: 没有声明 sample —— 每门语言都要给一份能跑的范本" \
+                "（`sample File.expand_path(\"examples/<名字>.rb\", File.dirname(__FILE__))`），" \
+                "它就是这门语言的文档。"
+        end
         {
           "name" => dsl_name,
           "description" => describe,

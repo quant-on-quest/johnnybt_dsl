@@ -13,6 +13,13 @@ class ShipmentThing < JohnnyDSL::Base
   dsl_name "shipping"
 end
 
+# Declared late on purpose: the assertion below reads to_meta before this
+# line runs, which is how a language missing its sample is caught.
+class SampledDSL < JohnnyDSL::Base
+  dsl_name "sampled"
+  sample "dsl/sampled.sample.rb"
+end
+
 assert('subclassing registers the language') do
   assert_true JohnnyDSL.dsls.include?(OrderDSL)
   assert_equal OrderDSL, JohnnyDSL.find("order")
@@ -23,9 +30,15 @@ assert('the name defaults from the class name, and can be said outright') do
   assert_equal "shipping", ShipmentThing.dsl_name
 end
 
-assert('the defining file is captured, and doc defaults to it') do
+assert('the defining file is captured; doc defaults to the sample') do
   assert_true OrderDSL.source.end_with?("dsl.rb")
-  assert_equal OrderDSL.source, OrderDSL.doc
+  assert_equal "dsl/order.sample.rb", OrderDSL.doc
+end
+
+assert('a language without a sample is refused when asked what it is') do
+  assert_raise(RuntimeError) { ShipmentThing.to_meta }
+  ShipmentThing.sample "dsl/shipping.sample.rb"   # declared: now it is a language
+  assert_equal "dsl/shipping.sample.rb", ShipmentThing.to_meta["sample"]
 end
 
 assert('the manifest carries every language as data') do
