@@ -70,3 +70,11 @@ end
 assert('the context is an empty hash when nothing was handed over') do
   assert_equal({}, JohnnyDSL.context)
 end
+
+assert('quantity suffixes: k, w, pct') do
+  assert_equal 5_000, 5.k
+  assert_equal 50_000_000, 5000.w
+  assert_equal 1_500, 1.5.k
+  assert_true 80.pct.is_a?(JohnnyDSL::Percent)
+  assert_equal 0.8, 80.pct.share
+end

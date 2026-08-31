@@ -147,7 +147,12 @@ module JohnnyDSL
       def trouble(message, backtrace = nil, declaration: nil)
         frames = (backtrace || []).map(&:to_s)
         own = JohnnyDSL.dsls.map(&:source).compact
-        spot = frames.find { |frame| own.none? { |file| frame.start_with?("#{file}:") } }
+        # Skip the languages' own frames AND the interpreter's built-in
+        # Ruby (anything under an mrblib/ - core or a gem's): a raise
+        # inside `each`'s block otherwise pins the failure to hash.rb.
+        spot = frames.find do |frame|
+          !frame.include?("/mrblib/") && own.none? { |file| frame.start_with?("#{file}:") }
+        end
         file, line = JohnnyDSL::Base.place_of(spot)
         failures << {
           "dsl" => dsl_name,
@@ -174,6 +179,49 @@ module JohnnyDSL
           [head.empty? ? nil : head, nil]
         end
       end
+    end
+  end
+end
+
+
+# Quantity suffixes for any hosted language: `5000.w >= threshold` reads
+# the way people write numbers, and `80.pct` marks a share so a language
+# can tell a percentile condition from an absolute one by type.
+class Numeric
+  # Thousands: 5.k == 5_000.
+  def k
+    self * 1_000
+  end
+
+  # Ten-thousands (the CJK 万, the unit A-share money is quoted in):
+  # 5000.w == 50_000_000.
+  def w
+    self * 10_000
+  end
+
+  # A share of a whole: 80.pct wraps 0.8 as a JohnnyDSL::Percent, a
+  # distinct type comparisons can dispatch on.
+  def pct
+    JohnnyDSL::Percent.new(self / 100.0)
+  end
+end
+
+module JohnnyDSL
+  # A share of a whole, carried as its own type.
+  #
+  # `80.pct` is not the number 0.8: a language that sees a Percent on the
+  # right of a comparison knows the author meant a percentile cut, not an
+  # absolute threshold, and can emit the right condition without a second
+  # keyword.
+  class Percent
+    attr_reader :share
+
+    def initialize(share)
+      @share = share
+    end
+
+    def to_s
+      "#{(@share * 100)}%"
     end
   end
 end
