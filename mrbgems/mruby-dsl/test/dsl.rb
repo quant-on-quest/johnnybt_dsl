@@ -78,3 +78,12 @@ assert('quantity suffixes: k, w, pct') do
   assert_true 80.pct.is_a?(JohnnyDSL::Percent)
   assert_equal 0.8, 80.pct.share
 end
+
+assert('time suffixes wrap a Period') do
+  assert_true 5.days.is_a?(JohnnyDSL::Period)
+  assert_equal :days, 5.days.unit
+  assert_equal 5, 5.days.count
+  assert_equal 1.week, 1.weeks
+  assert_equal :months, 3.months.unit
+  assert_equal "2 weeks", 2.weeks.to_s
+end

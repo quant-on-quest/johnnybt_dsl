@@ -204,6 +204,24 @@ class Numeric
   def pct
     JohnnyDSL::Percent.new(self / 100.0)
   end
+
+  # Spans of time: `period 5.days` reads the way people speak. Each wraps
+  # the count in a JohnnyDSL::Period; what a "day" means (trading day?
+  # calendar week?) is the hosting language's business, not this type's.
+  def days
+    JohnnyDSL::Period.new(:days, self)
+  end
+  alias day days
+
+  def weeks
+    JohnnyDSL::Period.new(:weeks, self)
+  end
+  alias week weeks
+
+  def months
+    JohnnyDSL::Period.new(:months, self)
+  end
+  alias month months
 end
 
 module JohnnyDSL
@@ -220,8 +238,38 @@ module JohnnyDSL
       @share = share
     end
 
+    def ==(other)
+      other.is_a?(Percent) && other.share == @share
+    end
+
+    def to_f
+      @share.to_f
+    end
+
     def to_s
       "#{(@share * 100)}%"
+    end
+  end
+
+  # A span of time: a unit (:days, :weeks, :months) and a count.
+  #
+  # `5.days` carries no calendar of its own — the hosting language decides
+  # whether a day is a trading day and what a week anchors to, exactly as
+  # it decides what a factor reference resolves to.
+  class Period
+    attr_reader :unit, :count
+
+    def initialize(unit, count)
+      @unit = unit
+      @count = count
+    end
+
+    def ==(other)
+      other.is_a?(Period) && other.unit == @unit && other.count == @count
+    end
+
+    def to_s
+      "#{@count} #{@unit}"
     end
   end
 end
