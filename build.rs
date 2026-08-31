@@ -79,26 +79,31 @@ fn build(source: &Path) -> PathBuf {
     let config = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo sets the manifest dir"))
         .join("build_config.rb");
     let archive = source.join("build").join("host").join("lib").join("libmruby.a");
-    if !archive.is_file() {
-        // mruby's own minirake is **serial**: 316 objects compiled one at a
-        // time, minutes on a 32-core machine. Real rake's `-m` (multitask)
-        // runs them in parallel — 4 seconds for the same tree, measured.
-        // Use it when it is there, fall back to minirake when it is not.
-        let parallel = Command::new("rake")
-            .arg("-m")
-            .current_dir(source)
-            .env("MRUBY_CONFIG", &config)
-            .status();
-        let built = matches!(parallel, Ok(status) if status.success());
-        if !built {
-            run(
-                Command::new(ruby())
-                    .arg("./minirake")
-                    .current_dir(source)
-                    .env("MRUBY_CONFIG", &config),
-                "the mruby build (it needs ruby: brew install ruby / apt install ruby)",
-            );
-        }
+    // Always ask the build tool, even when the archive is there: it is the
+    // one that knows whether a gem's Ruby changed, and it answers in
+    // milliseconds when nothing did. Skipping it while the archive exists
+    // is a cache keyed on the wrong thing — every edit under `mrbgems`
+    // (a word, the base class) went on running against the machine built
+    // before it, and only a `cargo clean` made the change appear.
+    //
+    // mruby's own minirake is **serial**: 316 objects compiled one at a
+    // time, minutes on a 32-core machine. Real rake's `-m` (multitask)
+    // runs them in parallel — 4 seconds for the same tree, measured. Use it
+    // when it is there, fall back to minirake when it is not.
+    let parallel = Command::new("rake")
+        .arg("-m")
+        .current_dir(source)
+        .env("MRUBY_CONFIG", &config)
+        .status();
+    let built = matches!(parallel, Ok(status) if status.success());
+    if !built {
+        run(
+            Command::new(ruby())
+                .arg("./minirake")
+                .current_dir(source)
+                .env("MRUBY_CONFIG", &config),
+            "the mruby build (it needs ruby: brew install ruby / apt install ruby)",
+        );
     }
     assert!(archive.is_file(), "mruby built but left no archive at {}", archive.display());
     archive.parent().expect("the archive has a directory").to_path_buf()

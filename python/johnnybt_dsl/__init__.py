@@ -8,7 +8,7 @@ want. A language baked in here would make one library serve one project.
 Installing needs neither a C compiler nor Ruby: the wheel ships mruby
 already compiled in.
 
-    from johnny_dsl import compile, run
+    from johnnybt_dsl import compile, run
 
     words = compile(open("dsl.rb").read(), "dsl.rb")   # once per process
     answer = run([(words, "dsl.rb"), (source, path)], answer="MyDSL.result")
@@ -22,8 +22,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from johnny_dsl._lib import compile as _compile
-from johnny_dsl._lib import run as _run
+from johnnybt_dsl._lib import compile as _compile
+from johnnybt_dsl._lib import run as _run
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -67,7 +67,7 @@ def run(
         answer: The expression run last, whose string value comes back.
         context: Handed to the program as the global `$johnny_context`
             before anything runs — a JSON blob by convention (the shipped
-            base class parses it lazily as `JohnnyDSL.context`).
+            base class parses it lazily as `JohnnyBtDSL.context`).
 
     Returns:
         Whatever the answer produced.

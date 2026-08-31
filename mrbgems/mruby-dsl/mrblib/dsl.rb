@@ -6,14 +6,14 @@
 # declared, and how it reports **which statement** went wrong — the whole
 # point of writing a DSL instead of a config format.
 #
-#     class OrderDSL < JohnnyDSL::Base
+#     class OrderDSL < JohnnyBtDSL::Base
 #       describe "orders, as a language"
 #       sample   "dsl/order.sample.rb"
 #     end
 #
 # Subclassing registers the language. The subclass collects with `declare`
 # and reports with `trouble`; a host reads everything back through one
-# envelope, `JohnnyDSL.ir`:
+# envelope, `JohnnyBtDSL.ir`:
 #
 #     {"version": 1,
 #      "dsls":         [{"name", "description", "doc", "sample", "source"}],
@@ -21,10 +21,10 @@
 #      "failures":     [{"dsl", "declaration", "message", "file", "line",
 #                        "backtrace"}]}
 #
-# `JohnnyDSL.manifest` is the same without declarations — for tooling that
+# `JohnnyBtDSL.manifest` is the same without declarations — for tooling that
 # only asks what languages exist and where their docs live.
 
-module JohnnyDSL
+module JohnnyBtDSL
   VERSION = 1
 
   class << self
@@ -82,8 +82,8 @@ module JohnnyDSL
         # The frame under `inherited` is the `class X < Base` line itself,
         # which is how `source` (and the default for `doc`) knows the file
         # without anyone spelling it.
-        sub.instance_variable_set(:@source, JohnnyDSL::Base.file_of(caller.first))
-        JohnnyDSL.dsls << sub
+        sub.instance_variable_set(:@source, JohnnyBtDSL::Base.file_of(caller.first))
+        JohnnyBtDSL.dsls << sub
       end
 
       # The language's name. Defaults to the class name without its DSL
@@ -161,14 +161,14 @@ module JohnnyDSL
       # must not parse backtraces themselves.
       def trouble(message, backtrace = nil, declaration: nil)
         frames = (backtrace || []).map(&:to_s)
-        own = JohnnyDSL.dsls.map(&:source).compact
+        own = JohnnyBtDSL.dsls.map(&:source).compact
         # Skip the languages' own frames AND the interpreter's built-in
         # Ruby (anything under an mrblib/ - core or a gem's): a raise
         # inside `each`'s block otherwise pins the failure to hash.rb.
         spot = frames.find do |frame|
           !frame.include?("/mrblib/") && own.none? { |file| frame.start_with?("#{file}:") }
         end
-        file, line = JohnnyDSL::Base.place_of(spot)
+        file, line = JohnnyBtDSL::Base.place_of(spot)
         failures << {
           "dsl" => dsl_name,
           "declaration" => declaration,
@@ -182,7 +182,7 @@ module JohnnyDSL
 
       # The file part of one backtrace frame.
       def file_of(frame)
-        JohnnyDSL::Base.place_of(frame).first
+        JohnnyBtDSL::Base.place_of(frame).first
       end
 
       # The file and line of one backtrace frame, either possibly nil.
@@ -214,32 +214,39 @@ class Numeric
     self * 10_000
   end
 
-  # A share of a whole: 80.pct wraps 0.8 as a JohnnyDSL::Percent, a
+  # A share of a whole: 80.pct wraps 0.8 as a JohnnyBtDSL::Percent, a
   # distinct type comparisons can dispatch on.
   def pct
-    JohnnyDSL::Percent.new(self / 100.0)
+    JohnnyBtDSL::Percent.new(self / 100.0)
+  end
+
+  # A place in an ordering: `100.rank` is the hundredth, whatever the
+  # population size — the third way to cut a cross-section, beside an
+  # absolute value and a share (`pct`).
+  def rank
+    JohnnyBtDSL::Rank.new(self)
   end
 
   # Spans of time: `period 5.days` reads the way people speak. Each wraps
-  # the count in a JohnnyDSL::Period; what a "day" means (trading day?
+  # the count in a JohnnyBtDSL::Period; what a "day" means (trading day?
   # calendar week?) is the hosting language's business, not this type's.
   def days
-    JohnnyDSL::Period.new(:days, self)
+    JohnnyBtDSL::Period.new(:days, self)
   end
   alias day days
 
   def weeks
-    JohnnyDSL::Period.new(:weeks, self)
+    JohnnyBtDSL::Period.new(:weeks, self)
   end
   alias week weeks
 
   def months
-    JohnnyDSL::Period.new(:months, self)
+    JohnnyBtDSL::Period.new(:months, self)
   end
   alias month months
 end
 
-module JohnnyDSL
+module JohnnyBtDSL
   # A share of a whole, carried as its own type.
   #
   # `80.pct` is not the number 0.8: a language that sees a Percent on the
@@ -263,6 +270,31 @@ module JohnnyDSL
 
     def to_s
       "#{(@share * 100)}%"
+    end
+  end
+
+  # A place in an ordering, carried as its own type.
+  #
+  # `100.rank` is not the number 100: a language seeing a Rank on the
+  # right of a comparison knows the author meant "the hundredth by this
+  # factor", not "the value 100".
+  class Rank
+    attr_reader :place
+
+    def initialize(place)
+      @place = place
+    end
+
+    def ==(other)
+      other.is_a?(Rank) && other.place == @place
+    end
+
+    def to_i
+      @place.to_i
+    end
+
+    def to_s
+      "##{@place}"
     end
   end
 

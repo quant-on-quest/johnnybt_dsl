@@ -4,7 +4,7 @@
 //! check is the machine: chunks run in order, bytecode is source's equal,
 //! errors name their chunk, and one evaluation cannot see another's world.
 
-use johnny_dsl::{compile_source, run_chunks, Chunk};
+use johnnybt_dsl::{compile_source, run_chunks, Chunk};
 
 /// Run one source chunk and return the answer.
 fn answer(source: &str, answer: &str) -> String {
@@ -116,18 +116,19 @@ fn every_run_starts_clean() {
 #[test]
 fn the_dsl_base_ships_with_the_machine() {
     // The one convention every hosted language shares: subclass
-    // JohnnyDSL::Base, declare, and the envelope reads it back.
+    // JohnnyBtDSL::Base, declare, and the envelope reads it back.
     let out = run_chunks(
         &[Chunk::Source(
             r#"
-            class ProbeDSL < JohnnyDSL::Base
+            class ProbeDSL < JohnnyBtDSL::Base
               describe "a probe"
+              sample "probe.rb"
             end
             ProbeDSL.declare({"n" => 1})
             "#,
             "probe.rb",
         )],
-        "JohnnyDSL.ir",
+        "JohnnyBtDSL.ir",
         None,
     )
     .expect("the base is in the VM");

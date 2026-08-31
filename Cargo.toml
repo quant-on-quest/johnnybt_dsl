@@ -1,11 +1,11 @@
 [package]
-name = "johnny_dsl"
+name = "johnnybt_dsl"
 version = "0.1.0"
 edition = "2021"
 description = "The DSL engine: mruby embedded in Rust, a strategy in, one JSON IR out."
 
 [lib]
-name = "johnny_dsl"
+name = "johnnybt_dsl"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

@@ -1,6 +1,6 @@
 """What the Rust extension exposes.
 
-The typed shell around it is `johnny_dsl.__init__`.
+The typed shell around it is `johnnybt_dsl.__init__`.
 """
 
 from collections.abc import Sequence

@@ -1,4 +1,4 @@
-//! `johnny_dsl` — an mruby virtual machine, ready to use.
+//! `johnnybt_dsl` — an mruby virtual machine, ready to use.
 //!
 //! The package provides the **machine and nothing else**: run some chunks
 //! of Ruby, then one expression, and hand back the string it produced.

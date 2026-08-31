@@ -1,9 +1,9 @@
-# johnny_dsl
+# johnnybt_dsl
 
 一台装好的 **mruby 虚拟机**。跑几段 Ruby，取回它产出的那个字符串 —— 就这些。
 
 ```python
-from johnny_dsl import compile, run
+from johnnybt_dsl import compile, run
 
 words = compile(open("dsl.rb").read(), "dsl.rb")     # 一个进程编一次
 ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
@@ -20,7 +20,7 @@ ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
 | | |
 |---|---|
 | `compile(source, name) -> bytes` | 编成字节码。字节码和解释器无关，编一次到处 load |
-| `run(chunks, answer, context) -> str` | 按顺序跑几段（源码或字节码），再跑 `answer`，返回它的字符串。`context` 进全局变量 `$johnny_context`（惯例是 JSON，基类懒解析成 `JohnnyDSL.context`） |
+| `run(chunks, answer, context) -> str` | 按顺序跑几段（源码或字节码），再跑 `answer`，返回它的字符串。`context` 进全局变量 `$johnny_context`（惯例是 JSON，基类懒解析成 `JohnnyBtDSL.context`） |
 | `run_file(path, before, answer)` | 同上，最后一段读自文件 |
 
 一次 `run` 一个解释器：一份文件定义的东西不会漏进下一份。几段之间共用一个
@@ -35,7 +35,7 @@ ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
 | `src/shim.c` | mruby 里是宏的那几个（`mrb_test` / `mrb->exc`）和编译入口的跳板 |
 | `src/engine.rs` | 解释器的生命周期，以及「跑几段、取一个字符串」 |
 | `mrbgems/mruby-json/` | 我们自己的 gem：`JSON.generate` / `#to_json` / `JSON.parse`，双向都在 C 里（解析错误带字节位） |
-| `mrbgems/mruby-dsl/` | 我们自己的 gem：`JohnnyDSL::Base` —— DSL 的基类（注册、declare、逐语句 trouble、manifest/ir 信封、`JohnnyDSL.context`）。**词不在这里**，词归定义语言的项目 |
+| `mrbgems/mruby-dsl/` | 我们自己的 gem：`JohnnyBtDSL::Base` —— DSL 的基类（注册、declare、逐语句 trouble、manifest/ir 信封、`JohnnyBtDSL.context`）。**词不在这里**，词归定义语言的项目 |
 
 ## 一处 mruby 的实情
 
