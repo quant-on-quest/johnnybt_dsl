@@ -86,6 +86,28 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
+  # One source distribution as well: someone on a platform the matrix does not
+  # cover, or who wants to read what they are installing, can build it. maturin
+  # carries the account walk into the tarball and rewrites the path, so a
+  # source build needs no sibling checkout — verified by building it in
+  # isolation.
+  sdist:
+    name: sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
   smoke:
     name: install a wheel and run some Ruby
     needs: wheels
@@ -120,7 +142,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    needs: [wheels, smoke]
+    needs: [wheels, sdist, smoke]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     environment: pypi
