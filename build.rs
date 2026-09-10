@@ -4,26 +4,31 @@
 //! actually builds it (the ones that look like they do expect a `libmruby.a`
 //! somebody else made), and the C API we bind is a dozen functions we write
 //! out ourselves in `src/sys.rs`. So this script owns the whole path — fetch
-//! the source at a pinned commit, run mruby's own build with our config,
-//! and hand cargo the archive.
+//! the source at a pinned tag, run mruby's own build with our config, and
+//! hand cargo the archive.
 //!
 //! Building mruby needs a Ruby to drive its rake, which is mruby's own
 //! requirement and not one we can wish away; the parser it uses is Prism, so
 //! bison is not needed. Both are build-time only — what ships is one static
 //! archive inside the extension module.
 //!
+//! **The C compiler is whichever one cargo is already using.** mruby would
+//! otherwise guess from the platform and the ambient environment, and on
+//! Windows it guesses wrong in the quiet way: a MinGW `gcc` is on the path of
+//! a machine whose Rust target is MSVC, so the archive builds and then does
+//! not link. The `cc` crate is the one that knows what cargo picked for this
+//! target, including where MSVC lives and what environment it needs, so this
+//! script asks it and tells mruby.
+//!
 //! Overrides, highest first:
 //!   * `MRUBY_DIR` — a source tree that is already there, used as it is.
-//!   * `JOHNNY_DSL_MRUBY_REF` — which commit to fetch when vendoring.
+//!   * `JOHNNY_DSL_MRUBY_REF` — which tag to fetch when vendoring.
 
 use std::env;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The commit vendored when nothing else is named.
-///
-/// Pinned rather than tracking a branch: the same source has to build the
-/// same engine tomorrow, and a moving parser is a moving language.
 /// Which mruby to build against — a **tag**, not a commit sha.
 ///
 /// It was a sha until 2026-09-10, when upstream stopped serving it
@@ -49,12 +54,101 @@ fn main() {
         Some(given) => PathBuf::from(given),
         None => vendored(),
     };
-    let lib = build(&source);
+    let compiler = Compiler::asked();
+    let lib = build(&source, &compiler);
     shim(&source);
 
     println!("cargo:rustc-link-search=native={}", lib.display());
-    println!("cargo:rustc-link-lib=static=mruby");
-    println!("cargo:rustc-link-lib=m");
+    println!("cargo:rustc-link-lib=static={}", compiler.archive_stem());
+    if !compiler.is_msvc {
+        // libm is part of the C runtime on MSVC; asking for it by name there
+        // is a link error, not a no-op.
+        println!("cargo:rustc-link-lib=m");
+    }
+}
+
+/// What cargo is compiling C with for this target, in mruby's vocabulary.
+struct Compiler {
+    /// mruby toolchain name: `visualcpp`, `clang` or `gcc`.
+    toolchain: &'static str,
+    /// The compiler driver, absolute where the `cc` crate found one.
+    command: OsString,
+    /// The archiver that goes with it.
+    archiver: OsString,
+    /// The environment the compiler needs (MSVC's include and lib paths).
+    environment: Vec<(OsString, OsString)>,
+    is_msvc: bool,
+    /// The cross build's name, or `None` when building for this machine.
+    cross: Option<String>,
+}
+
+impl Compiler {
+    /// Ask the `cc` crate what this target is built with.
+    fn asked() -> Self {
+        let target = env::var("TARGET").expect("cargo sets the target");
+        let host = env::var("HOST").expect("cargo sets the host");
+        let is_msvc = env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+        let mut asking = cc::Build::new();
+        asking.target(&target).host(&host).opt_level(2).cargo_metadata(false);
+        let tool = asking.get_compiler();
+        let toolchain = if is_msvc {
+            "visualcpp"
+        } else if tool.is_like_clang() {
+            "clang"
+        } else {
+            "gcc"
+        };
+        let archiver = asking.get_archiver().get_program().to_os_string();
+        Self {
+            toolchain,
+            command: tool.path().as_os_str().to_os_string(),
+            archiver,
+            environment: tool.env().to_vec(),
+            is_msvc,
+            // A target that is not this machine needs mruby's own two-build
+            // shape: `mrbc` runs here, the archive is for over there.
+            cross: (target != host).then_some(target),
+        }
+    }
+
+    /// Return the name rustc should link the archive by.
+    ///
+    /// mruby writes `libmruby` plus the platform's library extension, and
+    /// MSVC takes the whole stem: `static=libmruby` finds `libmruby.lib`,
+    /// while `static=mruby` would look for `mruby.lib` and find nothing.
+    fn archive_stem(&self) -> &'static str {
+        if self.is_msvc {
+            "libmruby"
+        } else {
+            "mruby"
+        }
+    }
+
+    /// Return the directory mruby writes this build's archive into.
+    fn build_name(&self) -> &str {
+        self.cross.as_deref().unwrap_or("host")
+    }
+
+    /// Return the archive's file name.
+    fn archive_file(&self) -> String {
+        let extension = if self.is_msvc { "lib" } else { "a" };
+        format!("libmruby.{extension}")
+    }
+
+    /// Put what mruby's config needs into a command's environment.
+    fn tell<'a>(&self, command: &'a mut Command) -> &'a mut Command {
+        command
+            .env("JOHNNY_DSL_TOOLCHAIN", self.toolchain)
+            .env("JOHNNY_DSL_CC", &self.command)
+            .env("JOHNNY_DSL_AR", &self.archiver);
+        if let Some(target) = &self.cross {
+            command.env("JOHNNY_DSL_CROSS", target);
+        }
+        for (name, value) in &self.environment {
+            command.env(name, value);
+        }
+        command
+    }
 }
 
 /// Return the vendored source tree, fetching it once if it is not there.
@@ -85,11 +179,15 @@ fn vendored() -> PathBuf {
     into
 }
 
-/// Build mruby in place and return the directory holding `libmruby.a`.
-fn build(source: &Path) -> PathBuf {
+/// Build mruby in place and return the directory holding its archive.
+fn build(source: &Path, compiler: &Compiler) -> PathBuf {
     let config = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo sets the manifest dir"))
         .join("build_config.rb");
-    let archive = source.join("build").join("host").join("lib").join("libmruby.a");
+    let archive = source
+        .join("build")
+        .join(compiler.build_name())
+        .join("lib")
+        .join(compiler.archive_file());
     // Always ask the build tool, even when the archive is there: it is the
     // one that knows whether a gem's Ruby changed, and it answers in
     // milliseconds when nothing did. Skipping it while the archive exists
@@ -101,18 +199,26 @@ fn build(source: &Path) -> PathBuf {
     // time, minutes on a 32-core machine. Real rake's `-m` (multitask)
     // runs them in parallel — 4 seconds for the same tree, measured. Use it
     // when it is there, fall back to minirake when it is not.
-    let parallel = Command::new("rake")
-        .arg("-m")
-        .current_dir(source)
-        .env("MRUBY_CONFIG", &config)
+    //
+    // Both go through `ruby`: on Windows `rake` is a batch file, and a batch
+    // file is not something `Command` can spawn by bare name.
+    let parallel = compiler
+        .tell(
+            Command::new(ruby())
+                .args(["-S", "rake", "-m"])
+                .current_dir(source)
+                .env("MRUBY_CONFIG", &config),
+        )
         .status();
     let built = matches!(parallel, Ok(status) if status.success());
     if !built {
         run(
-            Command::new(ruby())
-                .arg("./minirake")
-                .current_dir(source)
-                .env("MRUBY_CONFIG", &config),
+            compiler.tell(
+                Command::new(ruby())
+                    .arg("./minirake")
+                    .current_dir(source)
+                    .env("MRUBY_CONFIG", &config),
+            ),
             "the mruby build (it needs ruby: brew install ruby / apt install ruby)",
         );
     }
@@ -126,30 +232,12 @@ fn build(source: &Path) -> PathBuf {
 /// rules would be a copy that rots when mruby's build config changes. This
 /// keeps them whatever mruby says they are.
 fn shim(source: &Path) {
-    println!("cargo:rerun-if-changed=src/shim.c");
-    let out = PathBuf::from(env::var("OUT_DIR").expect("cargo sets the out dir"));
-    let object = out.join("johnny_shim.o");
-    let archive = out.join("libjohnny_shim.a");
-    run(
-        Command::new(env::var("CC").unwrap_or_else(|_| "cc".into()))
-            .arg("-c")
-            .arg("-fPIC")
-            .arg("-O2")
-            .arg("-I")
-            .arg(source.join("include"))
-            .arg("-I")
-            .arg(source.join("build").join("host").join("include"))
-            .arg("-o")
-            .arg(&object)
-            .arg("src/shim.c"),
-        "compiling shim.c",
-    );
-    run(
-        Command::new("ar").arg("crs").arg(&archive).arg(&object),
-        "archiving the shim",
-    );
-    println!("cargo:rustc-link-search=native={}", out.display());
-    println!("cargo:rustc-link-lib=static=johnny_shim");
+    cc::Build::new()
+        .file("src/shim.c")
+        .include(source.join("include"))
+        .include(source.join("build").join("host").join("include"))
+        .opt_level(2)
+        .compile("johnny_shim");
 }
 
 /// Return the ruby to build mruby with.

@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 pyo3 = { version = "0.29", features = ["abi3-py311"] }
 
 [build-dependencies]
+cc = "1"
 
 [profile.release]
 lto = true
