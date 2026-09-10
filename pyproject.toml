@@ -17,8 +17,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/quant-on-quest/johnnybt_dsl"
-Repository = "https://github.com/quant-on-quest/johnnybt_dsl"
+Homepage = "https://github.com/quant-on-quest/johnnybt-dsl"
+Repository = "https://github.com/quant-on-quest/johnnybt-dsl"
 
 [build-system]
 requires = ["maturin>=1.7,<2.0"]
