@@ -15,6 +15,24 @@ ir = run([(words, "dsl.rb"), (source, "策略.rb")], answer="MyDSL.result")
 **装上就能用**：wheel 里 mruby 已经编好了，用的人**不需要 GCC，也不需要 Ruby**。
 那两样只有我们构建 wheel 时才要。
 
+## 安装
+
+```sh
+pip install johnnybt-dsl
+```
+
+预编译轮子，一个平台一个，`abi3` 绑 Python 3.11、覆盖 3.11–3.14：
+
+| | x86_64 | arm64 |
+|---|---|---|
+| Linux | manylinux_2_28（glibc 2.28 及以上） | manylinux_2_28（glibc 2.28 及以上） |
+| macOS | 10.12 及以上 | 11.0 及以上 |
+| Windows | 有 | 有 |
+
+linux 的门槛比同系的两个 polars 插件（2.17）高一档，是因为这个包要编 C：
+mruby 的构建会跑它刚编出来的 `mrbc`，所以每一格都得在自己的架构上原生构建，
+而 pypa 提供原生镜像的最老的一档是 glibc 2.28。
+
 ## API
 
 | | |
