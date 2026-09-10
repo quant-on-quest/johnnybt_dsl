@@ -101,8 +101,8 @@ impl Compiler {
         let archiver = asking.get_archiver().get_program().to_os_string();
         Self {
             toolchain,
-            command: tool.path().as_os_str().to_os_string(),
-            archiver,
+            command: shell_safe(tool.path()),
+            archiver: shell_safe(Path::new(&archiver)),
             environment: tool.env().to_vec(),
             is_msvc,
             // A target that is not this machine needs mruby's own two-build
@@ -151,6 +151,24 @@ impl Compiler {
     }
 }
 
+/// Return a form of `program` that survives being pasted into a command line.
+///
+/// mruby runs its compiler by building a string and handing it to a shell,
+/// without quoting the command. MSVC lives under `C:\Program Files\...`, so
+/// the full path arrives as two words and the shell reports that `C:\Program`
+/// is not a command. The compilers this happens to are the ones the `cc`
+/// crate also hands us an environment for, PATH included, so the bare name
+/// resolves to exactly the same binary.
+fn shell_safe(program: &Path) -> OsString {
+    match program.to_string_lossy().contains(' ') {
+        true => program
+            .file_name()
+            .unwrap_or(program.as_os_str())
+            .to_os_string(),
+        false => program.as_os_str().to_os_string(),
+    }
+}
+
 /// Return the vendored source tree, fetching it once if it is not there.
 fn vendored() -> PathBuf {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("cargo sets the manifest dir"));
@@ -195,13 +213,13 @@ fn build(source: &Path, compiler: &Compiler) -> PathBuf {
     // (a word, the base class) went on running against the machine built
     // before it, and only a `cargo clean` made the change appear.
     //
-    // mruby's own minirake is **serial**: 316 objects compiled one at a
-    // time, minutes on a 32-core machine. Real rake's `-m` (multitask)
-    // runs them in parallel — 4 seconds for the same tree, measured. Use it
-    // when it is there, fall back to minirake when it is not.
+    // rake is a real requirement, not a convenience: mruby's `minirake` has
+    // become two lines that `exec "rake"`. It is asked for with `-m`
+    // (multitask) because the build is 316 objects and serial compilation
+    // takes minutes where parallel takes seconds — measured on this tree.
     //
-    // Both go through `ruby`: on Windows `rake` is a batch file, and a batch
-    // file is not something `Command` can spawn by bare name.
+    // It goes through `ruby -S`: on Windows `rake` is a batch file, and a
+    // batch file is not something `Command` can spawn by bare name.
     let parallel = compiler
         .tell(
             Command::new(ruby())
@@ -219,7 +237,7 @@ fn build(source: &Path, compiler: &Compiler) -> PathBuf {
                     .current_dir(source)
                     .env("MRUBY_CONFIG", &config),
             ),
-            "the mruby build (it needs ruby: brew install ruby / apt install ruby)",
+            "the mruby build (it needs ruby and rake: apt install ruby rake / gem install rake)",
         );
     }
     assert!(archive.is_file(), "mruby built but left no archive at {}", archive.display());

@@ -56,10 +56,12 @@ jobs:
 
       # mruby's build is driven by its own rake, so a Ruby has to be here.
       # It is build-time only — nothing about it ends up in the wheel.
+      # 3.4 rather than 3.3 because that is the oldest one built for every
+      # runner here — Windows on arm has 3.4 upwards and nothing before it.
       - uses: ruby/setup-ruby@v1
         if: matrix.os != 'linux'
         with:
-          ruby-version: "3.3"
+          ruby-version: "3.4"
 
       - uses: PyO3/maturin-action@v1
         with:
@@ -67,14 +69,16 @@ jobs:
           container: ${{ matrix.container || 'off' }}
           args: --release --out dist
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          # Inside the container: a Ruby new enough to run mruby's rake.
-          # AlmaLinux's default stream is 2.5, old enough that mruby's own
-          # build scripts use syntax it does not have.
+          # Inside the container: a Ruby new enough to run mruby's rake, and
+          # rake itself — mruby's bundled `minirake` is now two lines that
+          # exec the real one. AlmaLinux's default stream is Ruby 2.5, old
+          # enough that mruby's own build scripts use syntax it lacks.
           before-script-linux: |
             dnf module -y reset ruby || true
             dnf module -y enable ruby:3.3 || dnf module -y enable ruby:3.1 || true
-            dnf install -y ruby git || yum install -y ruby git
-            ruby --version
+            dnf install -y ruby rubygem-rake git || yum install -y ruby rubygem-rake git
+            command -v rake || gem install --no-document rake
+            ruby --version && rake --version
 
       - uses: actions/upload-artifact@v6
         with:
