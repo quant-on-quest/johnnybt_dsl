@@ -60,11 +60,44 @@ fn main() {
 
     println!("cargo:rustc-link-search=native={}", lib.display());
     println!("cargo:rustc-link-lib=static={}", compiler.archive_stem());
-    if !compiler.is_msvc {
-        // libm is part of the C runtime on MSVC; asking for it by name there
-        // is a link error, not a no-op.
-        println!("cargo:rustc-link-lib=m");
+    for name in libraries(&lib, &compiler) {
+        println!("cargo:rustc-link-lib={name}");
     }
+}
+
+/// Return the system libraries mruby says this archive needs.
+///
+/// The gems in `full-core` declare their own: the task scheduler wants
+/// `winmm` for the multimedia timers, sockets want `iphlpapi` and `ws2_32`,
+/// and everyone on Unix wants `m`. mruby collects those declarations and
+/// writes them into `libmruby.flags.mak` next to the archive, so that file
+/// is the answer — reading it means a gem added upstream tomorrow arrives
+/// with its libraries, instead of arriving as five unresolved symbols.
+fn libraries(lib: &Path, compiler: &Compiler) -> Vec<String> {
+    let written = std::fs::read_to_string(lib.join("libmruby.flags.mak")).unwrap_or_default();
+    let line = written
+        .lines()
+        .find_map(|line| line.strip_prefix("MRUBY_LIBS"))
+        .and_then(|rest| rest.split_once('=').map(|(_, value)| value));
+    let Some(line) = line else {
+        // No flags file: keep the one library every Unix build needs.
+        return match compiler.is_msvc {
+            true => Vec::new(),
+            false => vec!["m".to_string()],
+        };
+    };
+    line.split_whitespace()
+        .filter_map(|token| {
+            // Either `-lfoo` (gcc, clang) or `foo.lib` (MSVC).
+            let name = token
+                .strip_prefix("-l")
+                .or_else(|| token.strip_suffix(".lib"))
+                .unwrap_or_default();
+            // The archive itself is already linked, statically and by us.
+            let ours = name.is_empty() || name == "mruby" || name == "libmruby";
+            (!ours).then(|| name.to_string())
+        })
+        .collect()
 }
 
 /// What cargo is compiling C with for this target, in mruby's vocabulary.
