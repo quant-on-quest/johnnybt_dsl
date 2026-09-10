@@ -24,7 +24,18 @@ use std::process::Command;
 ///
 /// Pinned rather than tracking a branch: the same source has to build the
 /// same engine tomorrow, and a moving parser is a moving language.
-const MRUBY_REF: &str = "5993adb2b5c3b3bd52d1ed3d38a4a9c31ceac8ba";
+/// Which mruby to build against — a **tag**, not a commit sha.
+///
+/// It was a sha until 2026-09-10, when upstream stopped serving it
+/// (`upload-pack: not our ref`): a sha reachable from no ref can be
+/// garbage-collected, and then nobody but us can build this crate at all.
+/// A release tag is immutable and always reachable.
+///
+/// It has to be a 4.1 tag, not 4.0.0: `Regexp` comes from `mruby-regexp`,
+/// which entered `full-core` after 4.0.0 was cut, and a DSL whose words
+/// cannot match a pattern is not much of a DSL (the wheel built against
+/// 4.0.0 answers `uninitialized constant Regexp`).
+const MRUBY_REF: &str = "4.1.0-rc";
 const MRUBY_REPO: &str = "https://github.com/mruby/mruby.git";
 
 fn main() {

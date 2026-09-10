@@ -3,6 +3,22 @@ name = "johnnybt-dsl"
 version = "0.1.0"
 description = "A strategy DSL with a whole language behind it: mruby in Rust, JSON IR out."
 requires-python = ">=3.11"
+authors = [{ name = "MJ" }]
+license = "MIT"
+license-files = ["LICENSE", "LICENSE-mruby"]
+readme = "README.md"
+keywords = ["dsl", "mruby", "ruby", "embedded", "rust", "ir"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Ruby",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Interpreters",
+    "Topic :: Software Development :: Compilers",
+]
+
+[project.urls]
+Homepage = "https://github.com/quant-on-quest/johnnybt_dsl"
+Repository = "https://github.com/quant-on-quest/johnnybt_dsl"
 
 [build-system]
 requires = ["maturin>=1.7,<2.0"]

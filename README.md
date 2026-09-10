@@ -54,3 +54,9 @@ minirake。`vendor/mruby` 不进 git，第一次 `cargo build` 自己取。
 
 测试：`vendor/mruby/build/host/bin/mruby mrbgems/run_tests.rb`（gem 那侧）与
 `cargo test`（引擎那侧）。
+
+## 许可
+
+本包 MIT（见 `LICENSE`）。wheel 里静态链接了 **mruby**（MIT，见 `LICENSE-mruby`，
+版权归 mruby developers）；两个 mrbgem（`mruby-json`、`mruby-dsl`）是本仓库自己写的，
+同样 MIT。
