@@ -29,6 +29,10 @@ aim = lambda do |conf|
   conf.cc.command = compiler if compiler
   conf.linker.command = compiler if compiler && toolchain != :visualcpp
   conf.archiver.command = archiver if archiver
+  # rake -m runs many cl.exe at once, and `/Zi` has them all write one
+  # vc140.pdb: without `/FS` the second one in fails with C1041. The
+  # stable release's toolchain file does not say it; this one does.
+  conf.cc.flags << '/FS' if toolchain == :visualcpp
 end
 
 # Everything both builds share: the language, our two gems, and the flags
