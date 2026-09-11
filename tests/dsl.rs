@@ -138,6 +138,39 @@ fn the_dsl_base_ships_with_the_machine() {
 }
 
 #[test]
+fn a_failure_is_pinned_to_the_statement_even_through_the_cores_own_ruby() {
+    // A raise from inside a block handed to `Hash#each` has the core's own
+    // `mrblib/hash.rb` on top of the stack: written in Ruby since mruby
+    // 4.1, and reporting itself with no leading directory. The failure
+    // still belongs to the user's line, not to the interpreter's.
+    let out = run_chunks(
+        &[
+            Chunk::Source(
+                r##"
+                class ProbeDSL < JohnnyBtDSL::Base
+                  describe "a probe"
+                  sample "probe.rb"
+                  def self.check(pairs)
+                    pairs.each { |name, value| raise ArgumentError, "#{name} is not a number" unless value.is_a?(Numeric) }
+                  rescue => e
+                    trouble(e.message, e.backtrace, declaration: "probe")
+                  end
+                end
+                "##,
+                "words.rb",
+            ),
+            Chunk::Source("\n\nProbeDSL.check({\"cut\" => {}})\n", "strategy.rb"),
+        ],
+        "JohnnyBtDSL.ir",
+        None,
+    )
+    .expect("the failure is collected, not raised");
+
+    assert!(out.contains(r#""file":"strategy.rb""#), "{out}");
+    assert!(out.contains(r#""line":3"#), "{out}");
+}
+
+#[test]
 fn json_comes_from_the_gem_we_ship() {
     // The one thing the engine does bring: JSON generation, because a
     // string is what crosses back and the escaping has to be exact.

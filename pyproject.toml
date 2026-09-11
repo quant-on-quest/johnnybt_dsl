@@ -1,6 +1,6 @@
 [project]
 name = "johnnybt-dsl"
-version = "0.1.0"
+version = "0.1.1"
 description = "A strategy DSL with a whole language behind it: mruby in Rust, JSON IR out."
 requires-python = ">=3.11"
 authors = [{ name = "MJ" }]

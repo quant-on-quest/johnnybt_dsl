@@ -163,10 +163,12 @@ module JohnnyBtDSL
         frames = (backtrace || []).map(&:to_s)
         own = JohnnyBtDSL.dsls.map(&:source).compact
         # Skip the languages' own frames AND the interpreter's built-in
-        # Ruby (anything under an mrblib/ - core or a gem's): a raise
-        # inside `each`'s block otherwise pins the failure to hash.rb.
+        # Ruby: a raise inside `each`'s block otherwise pins the failure
+        # to hash.rb. The core reports its Ruby as a bare `mrblib/...`
+        # and a gem's as `mrbgems/<gem>/mrblib/...` — the directory is the
+        # tell, wherever it sits in the path.
         spot = frames.find do |frame|
-          !frame.include?("/mrblib/") && own.none? { |file| frame.start_with?("#{file}:") }
+          !interpreter?(frame) && own.none? { |file| frame.start_with?("#{file}:") }
         end
         file, line = JohnnyBtDSL::Base.place_of(spot)
         failures << {
@@ -178,6 +180,11 @@ module JohnnyBtDSL
           "backtrace" => frames,
         }
         nil
+      end
+
+      # Whether a backtrace frame is the interpreter's own Ruby.
+      def interpreter?(frame)
+        frame.start_with?("mrblib/") || frame.include?("/mrblib/")
       end
 
       # The file part of one backtrace frame.
