@@ -57,14 +57,15 @@ mruby 的构建会跑它刚编出来的 `mrbc`，所以每一格都得在自己�
 
 ## 一处 mruby 的实情
 
-mruby 的 Prism 编译器带**全局状态**（`mrc_init_presym` 写一个文件级的
-`offset`），两个解释器同时编译会互相踩。所以 `run` / `compile` 用一把锁串
-起来 —— 一次求值不到一毫秒，串行的代价远小于「错得莫名其妙」。
+mruby 开发线上的 Prism 编译器带**全局状态**（`mrc_init_presym` 写一个文件级的
+`offset`），两个解释器同时编译会互相踩。我们钉的是稳定版，它的解析器状态都在
+`mrb_parser_state` 里、没有这个全局 —— 但 `run` / `compile` 那把锁留着：一次求值
+不到一毫秒，串行的代价是零，而下次挪版本时谁都不用再想起这件事。
 
 ## 构建（只有我们要）
 
 * Rust、C 编译器
-* Ruby —— mruby 自己的 rake 要它（`brew install ruby`）。解析器是 Prism，**不要 bison**
+* Ruby —— mruby 自己的 rake 要它（`brew install ruby`）。解析器由 `parse.y` 生成，但生成好的 `y.tab.c` 随发布版一起来，**不要 bison**
 
 构建走真 `rake -m`（并行）：mruby 自带的 `minirake` 完全串行，316 个目标文件
 一个一个编，32 核机器上要几分钟；`rake -m` 同一棵树 **4 秒**。没有 rake 时退回

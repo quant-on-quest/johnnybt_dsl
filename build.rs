@@ -8,9 +8,10 @@
 //! hand cargo the archive.
 //!
 //! Building mruby needs a Ruby to drive its rake, which is mruby's own
-//! requirement and not one we can wish away; the parser it uses is Prism, so
-//! bison is not needed. Both are build-time only — what ships is one static
-//! archive inside the extension module.
+//! requirement and not one we can wish away. The parser is generated from
+//! `parse.y`, but the generated `y.tab.c` ships in the release, so bison is
+//! not needed either. Build-time only — what ships is one static archive
+//! inside the extension module.
 //!
 //! **The C compiler is whichever one cargo is already using.** mruby would
 //! otherwise guess from the platform and the ambient environment, and on
@@ -29,18 +30,18 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Which mruby to build against — a **tag**, not a commit sha.
+/// Which mruby to build against — the **stable release** named on
+/// mruby.org/downloads, as a tag.
 ///
-/// It was a sha until 2026-09-10, when upstream stopped serving it
+/// It was a commit sha until 2026-09-10, when upstream stopped serving it
 /// (`upload-pack: not our ref`): a sha reachable from no ref can be
 /// garbage-collected, and then nobody but us can build this crate at all.
-/// A release tag is immutable and always reachable.
-///
-/// It has to be a 4.1 tag, not 4.0.0: `Regexp` comes from `mruby-regexp`,
-/// which entered `full-core` after 4.0.0 was cut, and a DSL whose words
-/// cannot match a pattern is not much of a DSL (the wheel built against
-/// 4.0.0 answers `uninitialized constant Regexp`).
-const MRUBY_REF: &str = "4.1.0-rc";
+/// It was then a release candidate for a day, for its `Regexp` — and a DSL
+/// engine on a release candidate is a moving floor under everyone's
+/// strategy files. The four places that wanted a pattern are string
+/// operations now; the stable core has no Regexp and the words do not
+/// need one.
+const MRUBY_REF: &str = "4.0.0";
 const MRUBY_REPO: &str = "https://github.com/mruby/mruby.git";
 
 fn main() {

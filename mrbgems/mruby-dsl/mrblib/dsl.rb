@@ -90,7 +90,7 @@ module JohnnyBtDSL
       # suffix, lowercased: OrderDSL -> "order".
       def dsl_name(value = nil)
         @dsl_name = value.to_s unless value.nil?
-        @dsl_name || (name || "").sub(/DSL\z/, "").downcase
+        @dsl_name || JohnnyBtDSL::Base.without_suffix((name || "").to_s, "DSL").downcase
       end
 
       # One line on what this language declares.
@@ -193,13 +193,29 @@ module JohnnyBtDSL
       end
 
       # The file and line of one backtrace frame, either possibly nil.
+      #
+      # `file:line`, split at the last colon — a file may carry colons of
+      # its own, a line number cannot. No Regexp here: the stable mruby
+      # has none in its core, and this is the one place the base would
+      # otherwise need it.
       def place_of(frame)
         head = frame.to_s.split(":in ").first.to_s
-        if head =~ /\A(.+):(\d+)\z/
-          [::Regexp.last_match(1), ::Regexp.last_match(2).to_i]
+        file, colon, line = head.rpartition(":")
+        if !colon.empty? && !file.empty? && JohnnyBtDSL::Base.digits?(line)
+          [file, line.to_i]
         else
           [head.empty? ? nil : head, nil]
         end
+      end
+
+      # Whether `text` is one or more ASCII digits and nothing else.
+      def digits?(text)
+        !text.empty? && text.bytes.all? { |byte| byte >= 48 && byte <= 57 }
+      end
+
+      # `text` with `suffix` taken off the end, or `text` itself.
+      def without_suffix(text, suffix)
+        text.end_with?(suffix) ? text[0, text.size - suffix.size] : text
       end
     end
   end

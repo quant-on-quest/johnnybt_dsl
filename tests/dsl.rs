@@ -110,7 +110,9 @@ fn every_run_starts_clean() {
     // the next, or two runs would quietly differ by what ran before them.
     answer("SEEN = 1", "nil.to_s");
 
-    assert_eq!(answer("", "defined?(SEEN) ? 'saw it' : 'clean'"), "clean");
+    // Reading the constant, not `defined?(SEEN)`: on the stable mruby
+    // `defined?` of an unknown constant raises instead of answering nil.
+    assert_eq!(answer("", "begin; SEEN; 'saw it'; rescue NameError; 'clean'; end"), "clean");
 }
 
 #[test]

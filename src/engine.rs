@@ -22,15 +22,14 @@ use crate::sys;
 
 /// Held for the length of a run.
 ///
-/// mruby's Prism-based compiler keeps **global** state: `mrc_init_presym`
-/// writes a file-static `offset` every time an interpreter compiles
-/// something, so two interpreters compiling at once corrupt each other's
-/// symbol ids (a debug build asserts; a release build quietly gets the
-/// wrong symbols). Interpreters are otherwise independent, so the lock is
-/// only around the compiling — which is the whole of a run.
-///
-/// A run is a millisecond. Serialising them costs nothing next to being
-/// wrong in a way that would surface as a mystery three layers up.
+/// The compiler in mruby's development line (Prism-based) keeps **global**
+/// state: `mrc_init_presym` writes a file-static `offset` every time an
+/// interpreter compiles something, so two interpreters compiling at once
+/// corrupt each other's symbol ids (a debug build asserts; a release build
+/// quietly gets the wrong symbols). The stable release we build keeps its
+/// parser state per `mrb_parser_state` and has no such global — but the
+/// lock stays: a run is a millisecond, serialising them costs nothing, and
+/// the day the pin moves again nobody has to remember this.
 static COMPILING: Mutex<()> = Mutex::new(());
 
 /// Take the compiler lock, ignoring a previous panic's poison.
